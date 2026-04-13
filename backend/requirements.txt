@@ -1,0 +1,13 @@
+# API
+fastapi
+uvicorn
+
+# HTTP requests
+requests
+
+# Data processing
+pandas
+geopandas
+
+# Environment variables
+python-dotenv
