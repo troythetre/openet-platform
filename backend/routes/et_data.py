@@ -8,8 +8,13 @@ router = APIRouter()
 OPENET_BASE_URL = "https://openet-api.org"
 
 
-@router.get("/et/timeseries")
-def get_et_timeseries(field_id: str, start_date: str, end_date: str):
+@router.get("/et/point")
+def get_et_point(
+    longitude: float = -121.36322,
+    latitude: float = 38.87626,
+    start_date: str = "2023-01-01",
+    end_date: str = "2023-12-31",
+):
     headers = {
         "Authorization": os.getenv("OPENET_API_KEY"),
         "Content-Type": "application/json",
@@ -17,13 +22,15 @@ def get_et_timeseries(field_id: str, start_date: str, end_date: str):
     payload = {
         "date_range": [start_date, end_date],
         "interval": "monthly",
-        "field_ids": [field_id],
+        "geometry": [longitude, latitude],
         "model": "Ensemble",
         "variable": "ET",
+        "reference_et": "gridMET",
         "units": "in",
+        "file_format": "JSON",
     }
     response = requests.post(
-        f"{OPENET_BASE_URL}/v2/geodatabase/timeseries/features/monthly",
+        f"{OPENET_BASE_URL}/raster/timeseries/point",
         json=payload,
         headers=headers,
     )
