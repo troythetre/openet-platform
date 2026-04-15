@@ -81,6 +81,9 @@ def chart():
                 <span><span class="legend-dot" style="background:rgba(234,179,8,0.85);"></span>Low anomaly</span>
             </div>
             <div id="anomaly-alert" style="display:none;" class="anomaly-box"></div>
+            <button id="download-btn" onclick="downloadReport()" style="display:none; padding:8px 16px; background:#4CAF50; color:white; border:none; border-radius:6px; font-size:12px; cursor:pointer; width:100%;">
+                ⬇ Download CSV Report
+            </button>
             <div id="loading" class="loading">Click on the map to get started</div>
             <div id="chart-wrapper" style="display:none;">
                 <canvas id="chart"></canvas>
@@ -207,6 +210,7 @@ def chart():
 
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('chart-wrapper').style.display = 'block';
+                document.getElementById('download-btn').style.display = 'block';
 
                 const labels = data.map(function(d) { return d.time.slice(0, 7); });
                 const values = data.map(function(d) { return d.et; });
@@ -299,6 +303,14 @@ def chart():
             } else {
                 alert('Location not found. Try a different search.');
             }
+        }
+
+        function downloadReport() {
+            if (!currentLng || !currentLat) return;
+            const start = document.getElementById('start').value;
+            const end = document.getElementById('end').value;
+            const location = document.getElementById('search').value || 'Location';
+            window.open('/api/reports/csv?longitude=' + currentLng + '&latitude=' + currentLat + '&start_date=' + start + '&end_date=' + end + '&location_name=' + encodeURIComponent(location));
         }
     </script>
 </body>

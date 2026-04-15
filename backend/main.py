@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from routes.et_data import router as et_router
+from routes.reports import router as reports_router
 from routes.visualize import router as viz_router
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
@@ -10,6 +11,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 app = FastAPI(title="OpenET Platform API")
 app.include_router(et_router, prefix="/api")
 app.include_router(viz_router, prefix="/api")
+app.include_router(reports_router, prefix="/api")
 
 
 @app.get("/")
