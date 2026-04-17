@@ -1,7 +1,11 @@
+import json
 import os
+from datetime import datetime
 
 import requests
+from database import ETCache, QueryLog, SessionLocal
 from fastapi import APIRouter, HTTPException
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -34,6 +38,10 @@ def detect_anomalies(data: list) -> list:
     return result
 
 
+def get_cache_key(longitude, latitude, start_date, end_date):
+    return f"{round(longitude, 4)}_{round(latitude, 4)}_{start_date}_{end_date}"
+
+
 @router.get("/et/point")
 def get_et_point(
     longitude: float = -121.36322,
@@ -41,25 +49,74 @@ def get_et_point(
     start_date: str = "2023-01-01",
     end_date: str = "2023-12-31",
 ):
-    headers = {
-        "Authorization": os.getenv("OPENET_API_KEY"),
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "date_range": [start_date, end_date],
-        "interval": "monthly",
-        "geometry": [longitude, latitude],
-        "model": "Ensemble",
-        "variable": "ET",
-        "reference_et": "gridMET",
-        "units": "in",
-        "file_format": "JSON",
-    }
-    response = requests.post(
-        f"{OPENET_BASE_URL}/raster/timeseries/point",
-        json=payload,
-        headers=headers,
-    )
-    if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
-    return response.json()
+    db: Session = SessionLocal()
+
+    try:
+        # Check cache first
+        cached = (
+            db.query(ETCache)
+            .filter(
+                ETCache.longitude == round(longitude, 4),
+                ETCache.latitude == round(latitude, 4),
+                ETCache.start_date == start_date,
+                ETCache.end_date == end_date,
+            )
+            .first()
+        )
+
+        if cached:
+            data = json.loads(cached.data)
+            return detect_anomalies(data)
+
+        # Not in cache: fetch from OpenET API
+        headers = {
+            "Authorization": os.getenv("OPENET_API_KEY"),
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "date_range": [start_date, end_date],
+            "interval": "monthly",
+            "geometry": [longitude, latitude],
+            "model": "Ensemble",
+            "variable": "ET",
+            "reference_et": "gridMET",
+            "units": "in",
+            "file_format": "JSON",
+        }
+        response = requests.post(
+            f"{OPENET_BASE_URL}/raster/timeseries/point",
+            json=payload,
+            headers=headers,
+        )
+
+        # Log the query
+        log = QueryLog(
+            longitude=round(longitude, 4),
+            latitude=round(latitude, 4),
+            start_date=start_date,
+            end_date=end_date,
+            success=response.status_code == 200,
+        )
+        db.add(log)
+        db.commit()
+
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+
+        data = response.json()
+
+        # Save to cache
+        cache_entry = ETCache(
+            longitude=round(longitude, 4),
+            latitude=round(latitude, 4),
+            start_date=start_date,
+            end_date=end_date,
+            data=json.dumps(data),
+        )
+        db.add(cache_entry)
+        db.commit()
+
+        return detect_anomalies(data)
+
+    finally:
+        db.close()
