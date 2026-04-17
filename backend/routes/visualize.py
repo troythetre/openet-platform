@@ -231,9 +231,47 @@ def chart():
                     alertBox.innerText = msg;
                     alertBox.className = highAnomalies.length > 0 ? 'anomaly-box' : 'anomaly-box low';
                     alertBox.style.display = 'block';
-                }
 
-                if (chart) chart.destroy();
+                    // Anomaly detection
+                    const anomalies = data.filter(function(d) { return d.anomaly; });
+                    let anomalyMsg = '';
+
+                    if (anomalies.length > 0) {
+                        const alertBox = document.getElementById('anomaly-alert');
+                        const highAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'high'; });
+                        const lowAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'low'; });
+                        anomalyMsg = 'Anomaly detected: ';
+                        if (highAnomalies.length > 0) anomalyMsg += 'unusually high ET in ' + highAnomalies.map(function(d) { return d.time.slice(0,7); }).join(', ') + '. ';
+                        if (lowAnomalies.length > 0) anomalyMsg += 'unusually low ET in ' + lowAnomalies.map(function(d) { return d.time.slice(0,7); }).join(', ') + '.';
+                        alertBox.innerText = anomalyMsg;
+                        alertBox.className = highAnomalies.length > 0 ? 'anomaly-box' : 'anomaly-box low';
+                        alertBox.style.display = 'block';
+                    }
+
+                    // Map marker — red if anomaly, green if normal
+                    if (marker) marker.remove();
+                    if (anomalies.length > 0) {
+                        marker = L.circleMarker([lat, lng], {
+                            radius: 14,
+                            color: 'white',
+                            fillColor: '#ef4444',
+                            fillOpacity: 0.9,
+                            weight: 2
+                        }).addTo(map);
+                        marker.bindPopup(
+                            '<b style="color:#ef4444;">⚠ Anomaly Detected</b><br>' + anomalyMsg + '<br><br><small>Lat: ' + lat + ', Lng: ' + lng + '</small>'
+                        ).openPopup();
+                    } else {
+                        marker = L.circleMarker([lat, lng], {
+                            radius: 8,
+                            color: 'white',
+                            fillColor: '#4CAF50',
+                            fillOpacity: 1,
+                            weight: 2
+                        }).addTo(map);
+                        marker.bindPopup('<b style="color:#4CAF50;">✓ Normal ET levels</b><br><small>Lat: ' + lat + ', Lng: ' + lng + '</small>');
+                    }
+
                 chart = new Chart(document.getElementById('chart'), {
                     type: 'bar',
                     data: {
