@@ -17,47 +17,100 @@ def chart():
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, sans-serif; background: #111; color: white; }
-        header { background: #1a237e; color: white; padding: 16px 24px; display: flex; align-items: center; gap: 20px; }
-        header h1 { font-size: 20px; }
-        header p { font-size: 13px; opacity: 0.8; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #0d0d1a; color: white; }
+
+        /* Header */
+        header { background: linear-gradient(135deg, #1a237e 0%, #283593 100%); color: white; padding: 12px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #b22222; }
+        .header-logo { width: 36px; height: 36px; background: #b22222; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+        .header-text h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
+        .header-text p { font-size: 11px; opacity: 0.75; margin-top: 2px; }
+        .header-badge { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 3px 10px; font-size: 10px; opacity: 0.9; margin-left: 8px; }
         .controls { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
-        .controls label { font-size: 12px; opacity: 0.8; }
-        .controls input { padding: 6px 10px; border-radius: 6px; border: 1px solid #555; font-size: 12px; width: 110px; background: #2a2a4a; color: white; }
-        .controls button { padding: 6px 14px; background: #4CAF50; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; }
-        .controls button:hover { background: #388E3C; }
-        .main { display: grid; grid-template-columns: 1fr 380px; height: calc(100vh - 70px); }
+        .controls label { font-size: 11px; opacity: 0.8; }
+        .controls input { padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); font-size: 11px; width: 110px; background: rgba(255,255,255,0.1); color: white; }
+        .controls input::placeholder { color: rgba(255,255,255,0.5); }
+        .controls input:focus { outline: none; border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.15); }
+        .btn { padding: 6px 14px; border: none; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: 500; transition: all 0.15s; }
+        .btn-go { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); }
+        .btn-go:hover { background: rgba(255,255,255,0.25); }
+        .btn-heatmap { background: #4CAF50; color: white; }
+        .btn-heatmap:hover { background: #388E3C; }
+
+        /* Layout */
+        .main { display: grid; grid-template-columns: 1fr 380px; height: calc(100vh - 64px); }
         #map { width: 100%; height: 100%; }
-        .side-panel { background: #1a1a2e; padding: 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
-        .side-panel h2 { font-size: 14px; color: #90caf9; }
-        .coords { font-size: 12px; color: #aaa; }
-        .loading { font-size: 13px; color: #aaa; text-align: center; margin-top: 40px; }
-        .anomaly-box { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.5); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #fca5a5; }
-        .anomaly-box.low { background: rgba(234,179,8,0.15); border-color: rgba(234,179,8,0.5); color: #fde047; }
-        .legend { display: flex; gap: 12px; font-size: 11px; color: #aaa; flex-wrap: wrap; }
-        .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+        /* Side panel */
+        .side-panel { background: #111827; display: flex; flex-direction: column; overflow: hidden; border-left: 1px solid rgba(255,255,255,0.08); }
+        .side-panel-header { padding: 16px 20px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .side-panel-header h2 { font-size: 13px; font-weight: 600; color: #90caf9; letter-spacing: 0.5px; text-transform: uppercase; }
+        .side-panel-body { padding: 16px 20px; flex: 1; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+
+        /* Stats row */
+        .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .stat-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px 12px; text-align: center; }
+        .stat-card .val { font-size: 18px; font-weight: 600; color: #90caf9; }
+        .stat-card .lbl { font-size: 10px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+        .stat-card.anomaly .val { color: #ef4444; }
+        .stat-card.anomaly { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.05); }
+
+        /* Coords */
+        .coords { font-size: 11px; color: rgba(255,255,255,0.45); display: flex; align-items: center; gap: 6px; }
+        .coords-dot { width: 6px; height: 6px; border-radius: 50%; background: #4CAF50; flex-shrink: 0; }
+        .coords-dot.anomaly { background: #ef4444; }
+
+        /* Legend */
+        .legend { display: flex; gap: 12px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: rgba(255,255,255,0.6); }
+        .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+        /* Anomaly box */
+        .anomaly-box { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.35); border-radius: 8px; padding: 10px 14px; font-size: 11px; color: #fca5a5; line-height: 1.5; }
+        .anomaly-box.low { background: rgba(234,179,8,0.1); border-color: rgba(234,179,8,0.35); color: #fde047; }
+
+        /* Loading spinner */
+        .loading-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; }
+        .spinner { width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #90caf9; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { font-size: 12px; color: rgba(255,255,255,0.45); }
+
+        /* Chart */
         #chart-wrapper { flex: 1; min-height: 220px; }
-        .heatmap-status { font-size: 11px; color: #aaa; text-align: center; }
-        .color-scale { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #aaa; }
-        .color-bar { height: 12px; flex: 1; border-radius: 4px; background: linear-gradient(to right, #000080, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000); }
-        .map-overlay { position: absolute; bottom: 30px; left: 10px; z-index: 1000; background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 8px; font-size: 11px; color: white; }
+
+        /* Download button */
+        .btn-download { padding: 10px 16px; background: #1e5c2e; color: #4ade80; border: 1px solid #166534; border-radius: 8px; font-size: 12px; cursor: pointer; width: 100%; font-weight: 500; transition: all 0.15s; text-align: center; }
+        .btn-download:hover { background: #166534; }
+
+        /* Heatmap status */
+        .heatmap-status { font-size: 10px; color: rgba(255,255,255,0.35); text-align: center; padding: 4px 0; }
+
+        /* Map overlay */
+        .map-overlay { position: absolute; bottom: 30px; left: 10px; z-index: 1000; background: rgba(0,0,0,0.75); padding: 10px 14px; border-radius: 10px; font-size: 11px; color: white; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.1); }
+        .color-bar { width: 140px; height: 8px; border-radius: 4px; background: linear-gradient(to right, #000080, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000); margin: 6px 0 4px; }
+        .color-labels { display: flex; justify-content: space-between; font-size: 10px; opacity: 0.7; }
+
+        /* Empty state */
+        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 8px; opacity: 0.4; }
+        .empty-state .icon { font-size: 32px; }
+        .empty-state p { font-size: 12px; text-align: center; line-height: 1.5; }
     </style>
 </head>
 <body>
     <header>
-        <div>
-            <h1>OpenET Water Use Platform</h1>
-            <p>Click map to view ET data — heatmap shows annual ET across the region</p>
+        <div class="header-logo">🌿</div>
+        <div class="header-text">
+            <h1>OpenET Water Use Platform <span class="header-badge">Cornell M.Eng</span></h1>
+            <p>Satellite-based agricultural evapotranspiration analysis</p>
         </div>
         <div class="controls">
-            <input type="text" id="search" placeholder="Search location..." style="width:160px;"
+            <input type="text" id="search" placeholder="Search location..." style="width:150px;"
                 onkeydown="if(event.key==='Enter') searchLocation()"/>
-            <button onclick="searchLocation()" style="background:#555;">Go</button>
+            <button class="btn btn-go" onclick="searchLocation()">Go</button>
             <label>From</label>
             <input type="text" id="start" value="2023-01-01"/>
             <label>To</label>
             <input type="text" id="end" value="2023-12-31"/>
-            <button onclick="refreshHeatmap()">Update Heatmap</button>
+            <button class="btn btn-heatmap" onclick="refreshHeatmap()">Update Heatmap</button>
         </div>
     </header>
 
@@ -65,30 +118,63 @@ def chart():
         <div style="position:relative;">
             <div id="map"></div>
             <div class="map-overlay">
-                <div style="margin-bottom:4px;">ET Intensity</div>
-                <div class="color-bar" style="width:140px;height:10px;border-radius:3px;background:linear-gradient(to right,#000080,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000);"></div>
-                <div style="display:flex;justify-content:space-between;width:140px;margin-top:2px;">
-                    <span>Low</span><span>High</span>
-                </div>
+                <div style="font-weight:500;margin-bottom:2px;">ET Intensity</div>
+                <div class="color-bar"></div>
+                <div class="color-labels"><span>Low</span><span>High</span></div>
             </div>
         </div>
         <div class="side-panel">
-            <h2>Monthly ET Chart</h2>
-            <div class="coords" id="coords">Click on the map to select a location</div>
-            <div class="legend">
-                <span><span class="legend-dot" style="background:rgba(37,99,235,0.8);"></span>Normal</span>
-                <span><span class="legend-dot" style="background:rgba(239,68,68,0.85);"></span>High anomaly</span>
-                <span><span class="legend-dot" style="background:rgba(234,179,8,0.85);"></span>Low anomaly</span>
+            <div class="side-panel-header">
+                <h2>Monthly ET Analysis</h2>
             </div>
-            <div id="anomaly-alert" style="display:none;" class="anomaly-box"></div>
-            <button id="download-btn" onclick="downloadReport()" style="display:none; padding:8px 16px; background:#4CAF50; color:white; border:none; border-radius:6px; font-size:12px; cursor:pointer; width:100%;">
-                ⬇ Download CSV Report
-            </button>
-            <div id="loading" class="loading">Click on the map to get started</div>
-            <div id="chart-wrapper" style="display:none;">
-                <canvas id="chart"></canvas>
+            <div class="side-panel-body">
+                <div class="coords" id="coords">
+                    <span class="coords-dot" id="coords-dot"></span>
+                    <span id="coords-text">Click on the map to select a location</span>
+                </div>
+
+                <!-- Stats row (hidden until data loads) -->
+                <div class="stats-row" id="stats-row" style="display:none;">
+                    <div class="stat-card">
+                        <div class="val" id="stat-total">—</div>
+                        <div class="lbl">Total ET (in)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="val" id="stat-avg">—</div>
+                        <div class="lbl">Avg Monthly</div>
+                    </div>
+                    <div class="stat-card" id="stat-anomaly-card">
+                        <div class="val" id="stat-anomalies">—</div>
+                        <div class="lbl">Anomalies</div>
+                    </div>
+                </div>
+
+                <div class="legend">
+                    <div class="legend-item"><div class="legend-dot" style="background:rgba(37,99,235,0.8);"></div>Normal</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>High anomaly</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#eab308;"></div>Low anomaly</div>
+                </div>
+
+                <div id="anomaly-alert" style="display:none;" class="anomaly-box"></div>
+
+                <!-- Empty / loading / chart states -->
+                <div class="empty-state" id="empty-state">
+                    <div class="icon">🗺</div>
+                    <p>Click anywhere on the map to load ET data for that location</p>
+                </div>
+                <div class="loading-wrap" id="loading-wrap" style="display:none;">
+                    <div class="spinner"></div>
+                    <div class="loading-text" id="loading-text">Loading satellite data...</div>
+                </div>
+                <div id="chart-wrapper" style="display:none;">
+                    <canvas id="chart"></canvas>
+                </div>
+
+                <button class="btn-download" id="download-btn" onclick="downloadReport()" style="display:none;">
+                    ⬇ Download CSV Report
+                </button>
+                <div class="heatmap-status" id="heatmap-status"></div>
             </div>
-            <div class="heatmap-status" id="heatmap-status"></div>
         </div>
     </div>
 
@@ -98,68 +184,41 @@ def chart():
         let heatLayer;
         let currentLng = null;
         let currentLat = null;
+        let currentHasAnomaly = false;
 
         const map = L.map('map').setView([38.5, -121.5], 7);
-
-        // Dark tile layer
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© OpenStreetMap © CARTO',
-            maxZoom: 19
+            attribution: '© OpenStreetMap © CARTO', maxZoom: 19
         }).addTo(map);
 
         map.on('click', function(e) {
             currentLat = e.latlng.lat.toFixed(5);
             currentLng = e.latlng.lng.toFixed(5);
-            if (marker) marker.remove();
-            marker = L.circleMarker([currentLat, currentLng], {
-                radius: 8,
-                color: 'white',
-                fillColor: '#4CAF50',
-                fillOpacity: 1,
-                weight: 2
-            }).addTo(map);
             loadChart(currentLng, currentLat);
         });
 
-        async function refreshHeatmap() {
-            const center = map.getCenter();
-            const bounds = map.getBounds();
-            await loadHeatmap(bounds);
-        }
-
         map.on('moveend', function() {
-            const zoom = map.getZoom();
-            if (zoom >= 6) {
-                loadHeatmap(map.getBounds());
-            }
+            if (map.getZoom() >= 6) loadHeatmap(map.getBounds());
         });
 
+        async function refreshHeatmap() {
+            await loadHeatmap(map.getBounds());
+        }
+
         async function loadHeatmap(bounds) {
-            document.getElementById('heatmap-status').innerText = 'Loading heatmap data...';
+            document.getElementById('heatmap-status').innerText = 'Loading heatmap...';
             const start = document.getElementById('start').value;
             const end = document.getElementById('end').value;
-
-            // Sample a grid of points across the visible bounds
-            const north = bounds.getNorth();
-            const south = bounds.getSouth();
-            const east = bounds.getEast();
-            const west = bounds.getWest();
-
-            const gridSize = 5;
+            const north = bounds.getNorth(), south = bounds.getSouth();
+            const east = bounds.getEast(), west = bounds.getWest();
+            const gridSize = 3;
             const latStep = (north - south) / gridSize;
             const lngStep = (east - west) / gridSize;
-
             const points = [];
-            for (let i = 0; i <= gridSize; i++) {
-                for (let j = 0; j <= gridSize; j++) {
-                    points.push({
-                        lat: south + i * latStep,
-                        lng: west + j * lngStep
-                    });
-                }
-            }
+            for (let i = 0; i <= gridSize; i++)
+                for (let j = 0; j <= gridSize; j++)
+                    points.push({ lat: south + i * latStep, lng: west + j * lngStep });
 
-            // Fetch ET for each point
             const results = [];
             for (const p of points) {
                 try {
@@ -168,120 +227,95 @@ def chart():
                         const data = await res.json();
                         const totalET = data.reduce(function(sum, d) { return sum + d.et; }, 0);
                         results.push([p.lat, p.lng, totalET]);
-                        document.getElementById('heatmap-status').innerText = 'Loading... ' + results.length + ' points done';
+                        document.getElementById('heatmap-status').innerText = 'Loading... ' + results.length + ' points';
                     }
                 } catch(e) {}
                 await new Promise(r => setTimeout(r, 500));
             }
-
-            const validResults = results;
-
             if (heatLayer) map.removeLayer(heatLayer);
-            heatLayer = L.heatLayer(validResults, {
-                radius: 80,
-                blur: 60,
-                maxZoom: 12,
-                gradient: {
-                    0.0: '#000080',
-                    0.2: '#0000ff',
-                    0.4: '#00ffff',
-                    0.6: '#00ff00',
-                    0.8: '#ffff00',
-                    1.0: '#ff0000'
-                }
+            heatLayer = L.heatLayer(results, {
+                radius: 80, blur: 60, maxZoom: 12,
+                gradient: { 0.0: '#000080', 0.2: '#0000ff', 0.4: '#00ffff', 0.6: '#00ff00', 0.8: '#ffff00', 1.0: '#ff0000' }
             }).addTo(map);
-
-            document.getElementById('heatmap-status').innerText = 'Heatmap loaded — ' + validResults.length + ' points sampled';
+            document.getElementById('heatmap-status').innerText = 'Heatmap loaded — ' + results.length + ' points sampled';
         }
 
         async function loadChart(lng, lat) {
             const start = document.getElementById('start').value;
             const end = document.getElementById('end').value;
 
-            document.getElementById('coords').innerText = 'Lat: ' + lat + ', Lng: ' + lng;
-            document.getElementById('loading').innerText = 'Loading satellite data...';
-            document.getElementById('loading').style.display = 'block';
+            document.getElementById('coords-text').innerText = 'Lat: ' + lat + ', Lng: ' + lng;
+            document.getElementById('empty-state').style.display = 'none';
+            document.getElementById('loading-wrap').style.display = 'flex';
             document.getElementById('chart-wrapper').style.display = 'none';
             document.getElementById('anomaly-alert').style.display = 'none';
+            document.getElementById('stats-row').style.display = 'none';
+            document.getElementById('download-btn').style.display = 'none';
 
             try {
                 const res = await fetch('/api/et/point?longitude=' + lng + '&latitude=' + lat + '&start_date=' + start + '&end_date=' + end);
                 const data = await res.json();
 
-                document.getElementById('loading').style.display = 'none';
+                document.getElementById('loading-wrap').style.display = 'none';
                 document.getElementById('chart-wrapper').style.display = 'block';
+                document.getElementById('stats-row').style.display = 'grid';
                 document.getElementById('download-btn').style.display = 'block';
 
-                const labels = data.map(function(d) { return d.time.slice(0, 7); });
                 const values = data.map(function(d) { return d.et; });
+                const total = values.reduce(function(a, b) { return a + b; }, 0);
+                const avg = total / values.length;
+                const anomalies = data.filter(function(d) { return d.anomaly; });
+
+                document.getElementById('stat-total').innerText = total.toFixed(1);
+                document.getElementById('stat-avg').innerText = avg.toFixed(2);
+                document.getElementById('stat-anomalies').innerText = anomalies.length;
+
+                const anomalyCard = document.getElementById('stat-anomaly-card');
+                if (anomalies.length > 0) {
+                    anomalyCard.classList.add('anomaly');
+                } else {
+                    anomalyCard.classList.remove('anomaly');
+                }
+
+                const labels = data.map(function(d) { return d.time.slice(0, 7); });
                 const colors = data.map(function(d) {
                     if (d.anomaly && d.anomaly_type === 'high') return 'rgba(239,68,68,0.85)';
                     if (d.anomaly && d.anomaly_type === 'low') return 'rgba(234,179,8,0.85)';
                     return 'rgba(37,99,235,0.8)';
                 });
 
-                const anomalies = data.filter(function(d) { return d.anomaly; });
+                let anomalyMsg = '';
                 if (anomalies.length > 0) {
                     const alertBox = document.getElementById('anomaly-alert');
                     const highAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'high'; });
                     const lowAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'low'; });
-                    let msg = 'Anomaly detected: ';
-                    if (highAnomalies.length > 0) msg += 'unusually high ET in ' + highAnomalies.map(function(d) { return d.time.slice(0,7); }).join(', ') + '. ';
-                    if (lowAnomalies.length > 0) msg += 'unusually low ET in ' + lowAnomalies.map(function(d) { return d.time.slice(0,7); }).join(', ') + '.';
-                    alertBox.innerText = msg;
+                    anomalyMsg = 'Anomaly detected: ';
+                    if (highAnomalies.length > 0) anomalyMsg += 'unusually high ET in ' + highAnomalies.map(function(d) { return d.time.slice(0,7); }).join(', ') + '. ';
+                    if (lowAnomalies.length > 0) anomalyMsg += 'unusually low ET in ' + lowAnomalies.map(function(d) { return d.time.slice(0,7); }).join(', ') + '.';
+                    alertBox.innerText = anomalyMsg;
                     alertBox.className = highAnomalies.length > 0 ? 'anomaly-box' : 'anomaly-box low';
                     alertBox.style.display = 'block';
+                }
 
-                    // Anomaly detection
-                    const anomalies = data.filter(function(d) { return d.anomaly; });
-                    let anomalyMsg = '';
+                // Map marker
+                if (marker) marker.remove();
+                const coordsDot = document.getElementById('coords-dot');
+                if (anomalies.length > 0) {
+                    coordsDot.className = 'coords-dot anomaly';
+                    marker = L.circleMarker([lat, lng], { radius: 14, color: 'white', fillColor: '#ef4444', fillOpacity: 0.9, weight: 2 }).addTo(map);
+                    marker.bindPopup('<b style="color:#ef4444;">⚠ Anomaly Detected</b><br>' + anomalyMsg + '<br><small>Lat: ' + lat + ', Lng: ' + lng + '</small>').openPopup();
+                } else {
+                    coordsDot.className = 'coords-dot';
+                    marker = L.circleMarker([lat, lng], { radius: 8, color: 'white', fillColor: '#4CAF50', fillOpacity: 1, weight: 2 }).addTo(map);
+                    marker.bindPopup('<b style="color:#4CAF50;">✓ Normal ET levels</b><br><small>Lat: ' + lat + ', Lng: ' + lng + '</small>');
+                }
 
-                    if (anomalies.length > 0) {
-                        const alertBox = document.getElementById('anomaly-alert');
-                        const highAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'high'; });
-                        const lowAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'low'; });
-                        anomalyMsg = 'Anomaly detected: ';
-                        if (highAnomalies.length > 0) anomalyMsg += 'unusually high ET in ' + highAnomalies.map(function(d) { return d.time.slice(0,7); }).join(', ') + '. ';
-                        if (lowAnomalies.length > 0) anomalyMsg += 'unusually low ET in ' + lowAnomalies.map(function(d) { return d.time.slice(0,7); }).join(', ') + '.';
-                        alertBox.innerText = anomalyMsg;
-                        alertBox.className = highAnomalies.length > 0 ? 'anomaly-box' : 'anomaly-box low';
-                        alertBox.style.display = 'block';
-                    }
-
-                    // Map marker — red if anomaly, green if normal
-                    if (marker) marker.remove();
-                    if (anomalies.length > 0) {
-                        marker = L.circleMarker([lat, lng], {
-                            radius: 14,
-                            color: 'white',
-                            fillColor: '#ef4444',
-                            fillOpacity: 0.9,
-                            weight: 2
-                        }).addTo(map);
-                        marker.bindPopup(
-                            '<b style="color:#ef4444;">⚠ Anomaly Detected</b><br>' + anomalyMsg + '<br><br><small>Lat: ' + lat + ', Lng: ' + lng + '</small>'
-                        ).openPopup();
-                    } else {
-                        marker = L.circleMarker([lat, lng], {
-                            radius: 8,
-                            color: 'white',
-                            fillColor: '#4CAF50',
-                            fillOpacity: 1,
-                            weight: 2
-                        }).addTo(map);
-                        marker.bindPopup('<b style="color:#4CAF50;">✓ Normal ET levels</b><br><small>Lat: ' + lat + ', Lng: ' + lng + '</small>');
-                    }
-
+                if (chart) chart.destroy();
                 chart = new Chart(document.getElementById('chart'), {
                     type: 'bar',
                     data: {
                         labels: labels,
-                        datasets: [{
-                            label: 'ET (inches)',
-                            data: values,
-                            backgroundColor: colors,
-                            borderRadius: 4
-                        }]
+                        datasets: [{ label: 'ET (inches)', data: values, backgroundColor: colors, borderRadius: 4 }]
                     },
                     options: {
                         responsive: true,
@@ -292,54 +326,22 @@ def chart():
                                     label: function(ctx) {
                                         const d = data[ctx.dataIndex];
                                         let label = ctx.parsed.y.toFixed(2) + ' inches';
-                                        if (d.anomaly) label += ' - ' + d.anomaly_type + ' anomaly (z=' + d.z_score + ')';
+                                        if (d.anomaly) label += ' (' + d.anomaly_type + ', z=' + d.z_score + ')';
                                         return label;
                                     }
                                 }
                             }
                         },
                         scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: { color: '#aaa' },
-                                grid: { color: 'rgba(255,255,255,0.1)' },
-                                title: { display: true, text: 'ET (inches)', color: '#aaa' }
-                            },
-                            x: {
-                                ticks: { color: '#aaa', maxRotation: 45 },
-                                grid: { color: 'rgba(255,255,255,0.1)' },
-                                title: { display: true, text: 'Month', color: '#aaa' }
-                            }
+                            y: { beginAtZero: true, ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: 'ET (inches)', color: '#aaa', font: { size: 11 } } },
+                            x: { ticks: { color: '#aaa', maxRotation: 45, font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' } }
                         }
                     }
                 });
             } catch(e) {
-                document.getElementById('loading').innerText = 'Error loading data. Try another location.';
-                document.getElementById('loading').style.display = 'block';
-            }
-        }
-
-        // Load initial heatmap on page load
-        setTimeout(function() {
-            loadHeatmap(map.getBounds());
-        }, 1000);
-
-        async function searchLocation() {
-            const query = document.getElementById('search').value;
-            if (!query) return;
-
-            const res = await fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(query) + '&format=json&limit=1');
-            const data = await res.json();
-
-            if (data.length > 0) {
-                const lat = parseFloat(data[0].lat);
-                const lng = parseFloat(data[0].lon);
-                map.setView([lat, lng], 10);
-                setTimeout(function() {
-                    loadHeatmap(map.getBounds());
-                }, 500);
-            } else {
-                alert('Location not found. Try a different search.');
+                document.getElementById('loading-wrap').style.display = 'none';
+                document.getElementById('empty-state').style.display = 'flex';
+                document.getElementById('empty-state').querySelector('p').innerText = 'Error loading data. Try another location.';
             }
         }
 
@@ -350,6 +352,26 @@ def chart():
             const location = document.getElementById('search').value || 'Location';
             window.open('/api/reports/csv?longitude=' + currentLng + '&latitude=' + currentLat + '&start_date=' + start + '&end_date=' + end + '&location_name=' + encodeURIComponent(location));
         }
+
+        async function searchLocation() {
+            const query = document.getElementById('search').value;
+            if (!query) return;
+            const res = await fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(query) + '&format=json&limit=1');
+            const data = await res.json();
+            if (data.length > 0) {
+                map.setView([parseFloat(data[0].lat), parseFloat(data[0].lon)], 10);
+                setTimeout(function() { loadHeatmap(map.getBounds()); }, 500);
+            } else {
+                alert('Location not found.');
+            }
+        }
+
+        setTimeout(function() { let heatmapLoaded = false;
+
+                setTimeout(function() {
+                    loadHeatmap(map.getBounds());
+                    heatmapLoaded = true;
+                }, 1000); }, 1000);
     </script>
 </body>
 </html>

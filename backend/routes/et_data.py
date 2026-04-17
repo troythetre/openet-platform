@@ -38,8 +38,8 @@ def detect_anomalies(data: list) -> list:
 def get_et_point(
     longitude: float = -121.36322,
     latitude: float = 38.87626,
-    start_date: str = "2026-01-01",
-    end_date: str = "2026-4-01",
+    start_date: str = "2023-01-01",
+    end_date: str = "2023-12-31",
 ):
     headers = {
         "Authorization": os.getenv("OPENET_API_KEY"),
