@@ -1,5 +1,6 @@
 import json
 import os
+from collections import defaultdict
 from datetime import datetime
 
 import requests
@@ -13,14 +14,32 @@ OPENET_BASE_URL = "https://openet-api.org"
 
 
 def detect_anomalies(data: list) -> list:
-    values = [d["et"] for d in data]
-    mean = sum(values) / len(values)
-    std = (sum((x - mean) ** 2 for x in values) / len(values)) ** 0.5
+    # Group by month number (1-12)
+    monthly = defaultdict(list)
+    for d in data:
+        month = int(d["time"][5:7])
+        monthly[month].append(d["et"])
+
+    # Calculate seasonal baseline — mean and std per month
+    baseline = {}
+    for month, values in monthly.items():
+        mean = sum(values) / len(values)
+        std = (
+            (sum((v - mean) ** 2 for v in values) / len(values)) ** 0.5
+            if len(values) > 1
+            else 0
+        )
+        baseline[month] = {"mean": mean, "std": std}
 
     result = []
     for d in data:
+        month = int(d["time"][5:7])
+        b = baseline[month]
+        mean = b["mean"]
+        std = b["std"]
         z_score = (d["et"] - mean) / std if std > 0 else 0
         anomaly = abs(z_score) > 1.0
+
         result.append(
             {
                 "time": d["time"],
@@ -29,9 +48,9 @@ def detect_anomalies(data: list) -> list:
                 "z_score": round(z_score, 3),
                 "anomaly": anomaly,
                 "anomaly_type": "high"
-                if z_score > 1.5
+                if z_score > 1.0
                 else "low"
-                if z_score < -1.5
+                if z_score < -1.0
                 else "normal",
             }
         )
@@ -46,7 +65,7 @@ def get_cache_key(longitude, latitude, start_date, end_date):
 def get_et_point(
     longitude: float = -121.36322,
     latitude: float = 38.87626,
-    start_date: str = "2023-01-01",
+    start_date: str = "2021-01-01",
     end_date: str = "2023-12-31",
 ):
     db: Session = SessionLocal()

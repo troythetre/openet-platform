@@ -18,8 +18,6 @@ def chart():
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #0d0d1a; color: white; }
-
-        /* Header */
         header { background: linear-gradient(135deg, #1a237e 0%, #283593 100%); color: white; padding: 12px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #b22222; }
         .header-logo { width: 36px; height: 36px; background: #b22222; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
         .header-text h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
@@ -35,64 +33,41 @@ def chart():
         .btn-go:hover { background: rgba(255,255,255,0.25); }
         .btn-heatmap { background: #4CAF50; color: white; }
         .btn-heatmap:hover { background: #388E3C; }
-
-        /* Layout */
         .main { display: grid; grid-template-columns: 1fr 380px; height: calc(100vh - 64px); }
         #map { width: 100%; height: 100%; }
-
-        /* Side panel */
         .side-panel { background: #111827; display: flex; flex-direction: column; overflow: hidden; border-left: 1px solid rgba(255,255,255,0.08); }
         .side-panel-header { padding: 16px 20px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .side-panel-header h2 { font-size: 13px; font-weight: 600; color: #90caf9; letter-spacing: 0.5px; text-transform: uppercase; }
         .side-panel-body { padding: 16px 20px; flex: 1; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
-
-        /* Stats row */
         .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
         .stat-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px 12px; text-align: center; }
         .stat-card .val { font-size: 18px; font-weight: 600; color: #90caf9; }
         .stat-card .lbl { font-size: 10px; color: rgba(255,255,255,0.5); margin-top: 2px; }
         .stat-card.anomaly .val { color: #ef4444; }
         .stat-card.anomaly { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.05); }
-
-        /* Coords */
         .coords { font-size: 11px; color: rgba(255,255,255,0.45); display: flex; align-items: center; gap: 6px; }
         .coords-dot { width: 6px; height: 6px; border-radius: 50%; background: #4CAF50; flex-shrink: 0; }
         .coords-dot.anomaly { background: #ef4444; }
-
-        /* Legend */
         .legend { display: flex; gap: 12px; flex-wrap: wrap; }
         .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: rgba(255,255,255,0.6); }
         .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
-
-        /* Anomaly box */
         .anomaly-box { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.35); border-radius: 8px; padding: 10px 14px; font-size: 11px; color: #fca5a5; line-height: 1.5; }
         .anomaly-box.low { background: rgba(234,179,8,0.1); border-color: rgba(234,179,8,0.35); color: #fde047; }
-
-        /* Loading spinner */
         .loading-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; }
         .spinner { width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #90caf9; border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .loading-text { font-size: 12px; color: rgba(255,255,255,0.45); }
-
-        /* Chart */
         #chart-wrapper { flex: 1; min-height: 220px; }
-
-        /* Download button */
         .btn-download { padding: 10px 16px; background: #1e5c2e; color: #4ade80; border: 1px solid #166534; border-radius: 8px; font-size: 12px; cursor: pointer; width: 100%; font-weight: 500; transition: all 0.15s; text-align: center; }
         .btn-download:hover { background: #166534; }
-
-        /* Heatmap status */
         .heatmap-status { font-size: 10px; color: rgba(255,255,255,0.35); text-align: center; padding: 4px 0; }
-
-        /* Map overlay */
         .map-overlay { position: absolute; bottom: 30px; left: 10px; z-index: 1000; background: rgba(0,0,0,0.75); padding: 10px 14px; border-radius: 10px; font-size: 11px; color: white; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.1); }
         .color-bar { width: 140px; height: 8px; border-radius: 4px; background: linear-gradient(to right, #000080, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000); margin: 6px 0 4px; }
         .color-labels { display: flex; justify-content: space-between; font-size: 10px; opacity: 0.7; }
-
-        /* Empty state */
         .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 8px; opacity: 0.4; }
         .empty-state .icon { font-size: 32px; }
         .empty-state p { font-size: 12px; text-align: center; line-height: 1.5; }
+        .quota-warning { background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.3); border-radius: 8px; padding: 8px 12px; font-size: 11px; color: #fde047; text-align: center; }
     </style>
 </head>
 <body>
@@ -100,17 +75,17 @@ def chart():
         <div class="header-logo">🌿</div>
         <div class="header-text">
             <h1>OpenET Water Use Platform <span class="header-badge">Cornell M.Eng</span></h1>
-            <p>Satellite-based agricultural evapotranspiration analysis</p>
+            <p>Satellite-based agricultural evapotranspiration analysis — Finger Lakes Region</p>
         </div>
         <div class="controls">
             <input type="text" id="search" placeholder="Search location..." style="width:150px;"
                 onkeydown="if(event.key==='Enter') searchLocation()"/>
             <button class="btn btn-go" onclick="searchLocation()">Go</button>
             <label>From</label>
-            <input type="text" id="start" value="2023-01-01"/>
+            <input type="text" id="start" value="2021-01-01"/>
             <label>To</label>
             <input type="text" id="end" value="2023-12-31"/>
-            <button class="btn btn-heatmap" onclick="refreshHeatmap()">Update Heatmap</button>
+            <button class="btn btn-heatmap" onclick="refreshHeatmap()">Load Heatmap</button>
         </div>
     </header>
 
@@ -133,7 +108,6 @@ def chart():
                     <span id="coords-text">Click on the map to select a location</span>
                 </div>
 
-                <!-- Stats row (hidden until data loads) -->
                 <div class="stats-row" id="stats-row" style="display:none;">
                     <div class="stat-card">
                         <div class="val" id="stat-total">—</div>
@@ -157,9 +131,8 @@ def chart():
 
                 <div id="anomaly-alert" style="display:none;" class="anomaly-box"></div>
 
-                <!-- Empty / loading / chart states -->
                 <div class="empty-state" id="empty-state">
-                    <div class="icon">🗺</div>
+                    <div class="icon">🍇</div>
                     <p>Click anywhere on the map to load ET data for that location</p>
                 </div>
                 <div class="loading-wrap" id="loading-wrap" style="display:none;">
@@ -173,6 +146,17 @@ def chart():
                 <button class="btn-download" id="download-btn" onclick="downloadReport()" style="display:none;">
                     ⬇ Download CSV Report
                 </button>
+
+                <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px;">
+                    <div style="font-size:12px; font-weight:600; color:#90caf9; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px;">AI Assistant</div>
+                    <div id="chat-messages" style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:10px;"></div>
+                    <div style="display:flex; gap:6px;">
+                        <input type="text" id="chat-input" placeholder="Ask about the ET data..."
+                            style="flex:1; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.08); color:white; font-size:12px;"
+                            onkeydown="if(event.key==='Enter') sendChat()"/>
+                        <button onclick="sendChat()" style="padding:8px 12px; background:#1a237e; color:white; border:none; border-radius:6px; font-size:12px; cursor:pointer;">Send</button>
+                    </div>
+                </div>
                 <div class="heatmap-status" id="heatmap-status"></div>
             </div>
         </div>
@@ -184,29 +168,27 @@ def chart():
         let heatLayer;
         let currentLng = null;
         let currentLat = null;
-        let currentHasAnomaly = false;
 
-        const map = L.map('map').setView([38.5, -121.5], 7);
+        // Default: Finger Lakes wine region — confirmed OpenET coverage
+        const map = L.map('map').setView([42.66, -77.05], 10);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '© OpenStreetMap © CARTO', maxZoom: 19
         }).addTo(map);
 
+        // Only load chart on explicit click — never auto-trigger
         map.on('click', function(e) {
             currentLat = e.latlng.lat.toFixed(5);
             currentLng = e.latlng.lng.toFixed(5);
             loadChart(currentLng, currentLat);
         });
 
-        map.on('moveend', function() {
-            if (map.getZoom() >= 6) loadHeatmap(map.getBounds());
-        });
-
+        // Heatmap only loads when user explicitly clicks button — never on moveend
         async function refreshHeatmap() {
             await loadHeatmap(map.getBounds());
         }
 
         async function loadHeatmap(bounds) {
-            document.getElementById('heatmap-status').innerText = 'Loading heatmap...';
+            document.getElementById('heatmap-status').innerText = 'Loading heatmap... (uses API quota)';
             const start = document.getElementById('start').value;
             const end = document.getElementById('end').value;
             const north = bounds.getNorth(), south = bounds.getSouth();
@@ -227,17 +209,21 @@ def chart():
                         const data = await res.json();
                         const totalET = data.reduce(function(sum, d) { return sum + d.et; }, 0);
                         results.push([p.lat, p.lng, totalET]);
-                        document.getElementById('heatmap-status').innerText = 'Loading... ' + results.length + ' points';
+                        document.getElementById('heatmap-status').innerText = 'Loading... ' + results.length + ' / ' + points.length + ' points';
                     }
                 } catch(e) {}
-                await new Promise(r => setTimeout(r, 500));
+                await new Promise(r => setTimeout(r, 400));
             }
             if (heatLayer) map.removeLayer(heatLayer);
-            heatLayer = L.heatLayer(results, {
-                radius: 80, blur: 60, maxZoom: 12,
-                gradient: { 0.0: '#000080', 0.2: '#0000ff', 0.4: '#00ffff', 0.6: '#00ff00', 0.8: '#ffff00', 1.0: '#ff0000' }
-            }).addTo(map);
-            document.getElementById('heatmap-status').innerText = 'Heatmap loaded — ' + results.length + ' points sampled';
+            if (results.length > 0) {
+                heatLayer = L.heatLayer(results, {
+                    radius: 80, blur: 60, maxZoom: 12,
+                    gradient: { 0.0: '#000080', 0.2: '#0000ff', 0.4: '#00ffff', 0.6: '#00ff00', 0.8: '#ffff00', 1.0: '#ff0000' }
+                }).addTo(map);
+                document.getElementById('heatmap-status').innerText = 'Heatmap loaded — ' + results.length + ' points (cached for next time)';
+            } else {
+                document.getElementById('heatmap-status').innerText = 'No data available for this area.';
+            }
         }
 
         async function loadChart(lng, lat) {
@@ -256,12 +242,17 @@ def chart():
                 const res = await fetch('/api/et/point?longitude=' + lng + '&latitude=' + lat + '&start_date=' + start + '&end_date=' + end);
                 const data = await res.json();
 
+                if (!Array.isArray(data)) {
+                    throw new Error('Invalid response');
+                }
+
                 document.getElementById('loading-wrap').style.display = 'none';
                 document.getElementById('chart-wrapper').style.display = 'block';
                 document.getElementById('stats-row').style.display = 'grid';
                 document.getElementById('download-btn').style.display = 'block';
 
                 const values = data.map(function(d) { return d.et; });
+                window.currentETData = data;
                 const total = values.reduce(function(a, b) { return a + b; }, 0);
                 const avg = total / values.length;
                 const anomalies = data.filter(function(d) { return d.anomaly; });
@@ -297,7 +288,6 @@ def chart():
                     alertBox.style.display = 'block';
                 }
 
-                // Map marker
                 if (marker) marker.remove();
                 const coordsDot = document.getElementById('coords-dot');
                 if (anomalies.length > 0) {
@@ -341,7 +331,7 @@ def chart():
             } catch(e) {
                 document.getElementById('loading-wrap').style.display = 'none';
                 document.getElementById('empty-state').style.display = 'flex';
-                document.getElementById('empty-state').querySelector('p').innerText = 'Error loading data. Try another location.';
+                document.getElementById('empty-state').querySelector('p').innerText = 'No data for this location. Try clicking on farmland or vineyard areas.';
             }
         }
 
@@ -349,7 +339,7 @@ def chart():
             if (!currentLng || !currentLat) return;
             const start = document.getElementById('start').value;
             const end = document.getElementById('end').value;
-            const location = document.getElementById('search').value || 'Location';
+            const location = document.getElementById('search').value || 'Finger Lakes';
             window.open('/api/reports/csv?longitude=' + currentLng + '&latitude=' + currentLat + '&start_date=' + start + '&end_date=' + end + '&location_name=' + encodeURIComponent(location));
         }
 
@@ -360,18 +350,39 @@ def chart():
             const data = await res.json();
             if (data.length > 0) {
                 map.setView([parseFloat(data[0].lat), parseFloat(data[0].lon)], 10);
-                setTimeout(function() { loadHeatmap(map.getBounds()); }, 500);
             } else {
                 alert('Location not found.');
             }
         }
 
-        setTimeout(function() { let heatmapLoaded = false;
-
-                setTimeout(function() {
-                    loadHeatmap(map.getBounds());
-                    heatmapLoaded = true;
-                }, 1000); }, 1000);
+        async function sendChat() {
+            const input = document.getElementById('chat-input');
+            const msg = input.value.trim();
+            if (!msg) return;
+            input.value = '';
+            const messages = document.getElementById('chat-messages');
+            messages.innerHTML += '<div style="background:rgba(37,99,235,0.2);border-radius:8px;padding:8px 10px;font-size:12px;align-self:flex-end;max-width:85%;">' + msg + '</div>';
+            messages.innerHTML += '<div id="chat-loading" style="font-size:11px;color:rgba(255,255,255,0.4);">Thinking...</div>';
+            messages.scrollTop = messages.scrollHeight;
+            try {
+                const etData = window.currentETData || [];
+                const location = document.getElementById('search').value || 'Finger Lakes';
+                const start = document.getElementById('start').value;
+                const end = document.getElementById('end').value;
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg, et_data: etData, location: location, date_range: start + ' to ' + end })
+                });
+                const data = await res.json();
+                document.getElementById('chat-loading').remove();
+                messages.innerHTML += '<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 10px;font-size:12px;max-width:90%;line-height:1.5;">' + data.response + '</div>';
+                messages.scrollTop = messages.scrollHeight;
+            } catch(e) {
+                document.getElementById('chat-loading').remove();
+                messages.innerHTML += '<div style="color:#ef4444;font-size:11px;">Error — try again.</div>';
+            }
+        }
     </script>
 </body>
 </html>
