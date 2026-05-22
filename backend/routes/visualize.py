@@ -67,7 +67,6 @@ def chart():
         .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 8px; opacity: 0.4; }
         .empty-state .icon { font-size: 32px; }
         .empty-state p { font-size: 12px; text-align: center; line-height: 1.5; }
-        .quota-warning { background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.3); border-radius: 8px; padding: 8px 12px; font-size: 11px; color: #fde047; text-align: center; }
     </style>
 </head>
 <body>
@@ -169,26 +168,23 @@ def chart():
         let currentLng = null;
         let currentLat = null;
 
-        // Default: Finger Lakes wine region — confirmed OpenET coverage
         const map = L.map('map').setView([42.66, -77.05], 10);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '© OpenStreetMap © CARTO', maxZoom: 19
         }).addTo(map);
 
-        // Only load chart on explicit click — never auto-trigger
         map.on('click', function(e) {
             currentLat = e.latlng.lat.toFixed(5);
             currentLng = e.latlng.lng.toFixed(5);
             loadChart(currentLng, currentLat);
         });
 
-        // Heatmap only loads when user explicitly clicks button — never on moveend
         async function refreshHeatmap() {
             await loadHeatmap(map.getBounds());
         }
 
         async function loadHeatmap(bounds) {
-            document.getElementById('heatmap-status').innerText = 'Loading heatmap... (uses API quota)';
+            document.getElementById('heatmap-status').innerText = 'Loading heatmap...';
             const start = document.getElementById('start').value;
             const end = document.getElementById('end').value;
             const north = bounds.getNorth(), south = bounds.getSouth();
@@ -207,9 +203,11 @@ def chart():
                     const res = await fetch('/api/et/point?longitude=' + p.lng.toFixed(4) + '&latitude=' + p.lat.toFixed(4) + '&start_date=' + start + '&end_date=' + end);
                     if (res.ok) {
                         const data = await res.json();
-                        const totalET = data.reduce(function(sum, d) { return sum + d.et; }, 0);
-                        results.push([p.lat, p.lng, totalET]);
-                        document.getElementById('heatmap-status').innerText = 'Loading... ' + results.length + ' / ' + points.length + ' points';
+                        if (Array.isArray(data)) {
+                            const totalET = data.reduce(function(sum, d) { return sum + d.et; }, 0);
+                            results.push([p.lat, p.lng, totalET]);
+                            document.getElementById('heatmap-status').innerText = 'Loading... ' + results.length + ' / ' + points.length + ' points';
+                        }
                     }
                 } catch(e) {}
                 await new Promise(r => setTimeout(r, 400));
@@ -242,17 +240,15 @@ def chart():
                 const res = await fetch('/api/et/point?longitude=' + lng + '&latitude=' + lat + '&start_date=' + start + '&end_date=' + end);
                 const data = await res.json();
 
-                if (!Array.isArray(data)) {
-                    throw new Error('Invalid response');
-                }
+                if (!Array.isArray(data)) throw new Error('Invalid response');
 
                 document.getElementById('loading-wrap').style.display = 'none';
                 document.getElementById('chart-wrapper').style.display = 'block';
                 document.getElementById('stats-row').style.display = 'grid';
                 document.getElementById('download-btn').style.display = 'block';
 
-                const values = data.map(function(d) { return d.et; });
                 window.currentETData = data;
+                const values = data.map(function(d) { return d.et; });
                 const total = values.reduce(function(a, b) { return a + b; }, 0);
                 const avg = total / values.length;
                 const anomalies = data.filter(function(d) { return d.anomaly; });
@@ -267,13 +263,6 @@ def chart():
                 } else {
                     anomalyCard.classList.remove('anomaly');
                 }
-
-                const labels = data.map(function(d) { return d.time.slice(0, 7); });
-                const colors = data.map(function(d) {
-                    if (d.anomaly && d.anomaly_type === 'high') return 'rgba(239,68,68,0.85)';
-                    if (d.anomaly && d.anomaly_type === 'low') return 'rgba(234,179,8,0.85)';
-                    return 'rgba(37,99,235,0.8)';
-                });
 
                 let anomalyMsg = '';
                 if (anomalies.length > 0) {
@@ -301,33 +290,85 @@ def chart():
                 }
 
                 if (chart) chart.destroy();
+
+                // Group data by year for multi-year comparison
+                const years = {};
+                data.forEach(function(d) {
+                    const year = d.time.slice(0, 4);
+                    if (!years[year]) years[year] = [];
+                    years[year].push({
+                        et: d.et,
+                        anomaly: d.anomaly,
+                        anomaly_type: d.anomaly_type
+                    });
+                });
+
+                const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const yearColors = {
+                    '2021': 'rgba(99,179,237,0.85)',
+                    '2022': 'rgba(154,205,100,0.85)',
+                    '2023': 'rgba(246,173,85,0.85)',
+                    '2024': 'rgba(203,139,255,0.85)'
+                };
+
+                const yearList = Object.keys(years).sort();
+                const datasets = yearList.map(function(year) {
+                    return {
+                        label: year,
+                        data: years[year].map(function(d) { return d.et; }),
+                        backgroundColor: years[year].map(function(d) {
+                            if (d.anomaly && d.anomaly_type === 'high') return 'rgba(239,68,68,0.85)';
+                            if (d.anomaly && d.anomaly_type === 'low') return 'rgba(234,179,8,0.85)';
+                            return yearColors[year] || 'rgba(37,99,235,0.8)';
+                        }),
+                        borderColor: yearColors[year] || 'rgba(37,99,235,0.8)',
+                        borderWidth: 1,
+                        borderRadius: 3
+                    };
+                });
+
                 chart = new Chart(document.getElementById('chart'), {
                     type: 'bar',
                     data: {
-                        labels: labels,
-                        datasets: [{ label: 'ET (inches)', data: values, backgroundColor: colors, borderRadius: 4 }]
+                        labels: monthLabels,
+                        datasets: datasets
                     },
                     options: {
                         responsive: true,
                         plugins: {
-                            legend: { display: false },
+                            legend: {
+                                display: true,
+                                labels: { color: '#aaa', font: { size: 11 } }
+                            },
                             tooltip: {
                                 callbacks: {
                                     label: function(ctx) {
-                                        const d = data[ctx.dataIndex];
-                                        let label = ctx.parsed.y.toFixed(2) + ' inches';
-                                        if (d.anomaly) label += ' (' + d.anomaly_type + ', z=' + d.z_score + ')';
+                                        const year = ctx.dataset.label;
+                                        const val = ctx.parsed.y.toFixed(2);
+                                        const d = years[year][ctx.dataIndex];
+                                        let label = year + ': ' + val + ' in';
+                                        if (d && d.anomaly) label += ' ⚠ ' + d.anomaly_type;
                                         return label;
                                     }
                                 }
                             }
                         },
                         scales: {
-                            y: { beginAtZero: true, ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: 'ET (inches)', color: '#aaa', font: { size: 11 } } },
-                            x: { ticks: { color: '#aaa', maxRotation: 45, font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' } }
+                            y: {
+                                beginAtZero: true,
+                                ticks: { color: '#aaa' },
+                                grid: { color: 'rgba(255,255,255,0.06)' },
+                                title: { display: true, text: 'ET (inches)', color: '#aaa', font: { size: 11 } }
+                            },
+                            x: {
+                                ticks: { color: '#aaa', font: { size: 10 } },
+                                grid: { color: 'rgba(255,255,255,0.06)' },
+                                title: { display: true, text: 'Month', color: '#aaa' }
+                            }
                         }
                     }
                 });
+
             } catch(e) {
                 document.getElementById('loading-wrap').style.display = 'none';
                 document.getElementById('empty-state').style.display = 'flex';
