@@ -14,13 +14,15 @@ OPENET_BASE_URL = "https://openet-api.org"
 
 
 def detect_anomalies(data: list) -> list:
+    from collections import defaultdict
+
     # Group by month number (1-12)
     monthly = defaultdict(list)
     for d in data:
         month = int(d["time"][5:7])
         monthly[month].append(d["et"])
 
-    # Calculate seasonal baseline — mean and std per month
+    # Calculate seasonal baseline per month
     baseline = {}
     for month, values in monthly.items():
         mean = sum(values) / len(values)
@@ -37,8 +39,14 @@ def detect_anomalies(data: list) -> list:
         b = baseline[month]
         mean = b["mean"]
         std = b["std"]
+
+        # Z-score for anomaly detection
         z_score = (d["et"] - mean) / std if std > 0 else 0
         anomaly = abs(z_score) > 1.0
+
+        # Normalized ET — percentage of monthly baseline
+        # 100% = exactly average, 150% = 50% above average, 50% = half the average
+        normalized = round((d["et"] / mean * 100), 1) if mean > 0 else 100.0
 
         result.append(
             {
@@ -46,6 +54,7 @@ def detect_anomalies(data: list) -> list:
                 "et": d["et"],
                 "mean": round(mean, 3),
                 "z_score": round(z_score, 3),
+                "normalized": normalized,  # % of baseline
                 "anomaly": anomaly,
                 "anomaly_type": "high"
                 if z_score > 1.0

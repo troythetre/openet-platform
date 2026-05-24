@@ -15,6 +15,8 @@ def chart():
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #0d0d1a; color: white; }
@@ -85,6 +87,7 @@ def chart():
             <label>To</label>
             <input type="text" id="end" value="2023-12-31"/>
             <button class="btn btn-heatmap" onclick="refreshHeatmap()">Load Heatmap</button>
+            <button class="btn" id="ndvi-btn" onclick="toggleNDVI()" style="background:rgba(74,222,128,0.2);color:#4ade80;border:1px solid rgba(74,222,128,0.5);">NDVI Off</button>
         </div>
     </header>
 
@@ -95,6 +98,11 @@ def chart():
                 <div style="font-weight:500;margin-bottom:2px;">ET Intensity</div>
                 <div class="color-bar"></div>
                 <div class="color-labels"><span>Low</span><span>High</span></div>
+                <div id="ndvi-legend" style="display:none;margin-top:10px;">
+                    <div style="font-weight:500;margin-bottom:2px;">NDVI (Vegetation)</div>
+                    <div style="width:140px;height:8px;border-radius:4px;background:linear-gradient(to right,#8B4513,#d4a853,#90EE90,#228B22);margin:4px 0;"></div>
+                    <div style="display:flex;justify-content:space-between;font-size:10px;opacity:0.7;"><span>Bare soil</span><span>Dense veg</span></div>
+                </div>
             </div>
         </div>
         <div class="side-panel">
@@ -104,7 +112,7 @@ def chart():
             <div class="side-panel-body">
                 <div class="coords" id="coords">
                     <span class="coords-dot" id="coords-dot"></span>
-                    <span id="coords-text">Click on the map to select a location</span>
+                    <span id="coords-text">Click or draw a polygon on the map</span>
                 </div>
 
                 <div class="stats-row" id="stats-row" style="display:none;">
@@ -132,7 +140,7 @@ def chart():
 
                 <div class="empty-state" id="empty-state">
                     <div class="icon">🍇</div>
-                    <p>Click anywhere on the map to load ET data for that location</p>
+                    <p>Click anywhere or draw a polygon on the map to load ET data</p>
                 </div>
                 <div class="loading-wrap" id="loading-wrap" style="display:none;">
                     <div class="spinner"></div>
@@ -167,12 +175,85 @@ def chart():
         let heatLayer;
         let currentLng = null;
         let currentLat = null;
+        let ndviVisible = false;
 
         const map = L.map('map').setView([42.66, -77.05], 10);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© OpenStreetMap © CARTO', maxZoom: 19
-        }).addTo(map);
 
+        // Satellite base layer
+        const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles © Esri', maxZoom: 19
+        });
+
+        // Street labels overlay
+        const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap © CARTO', maxZoom: 19
+        });
+
+        satellite.addTo(map);
+        labels.addTo(map);
+
+        // NDVI layer from NASA GIBS (MODIS Terra monthly NDVI)
+        const ndviLayer = L.tileLayer(
+            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_L3_NDVI_Monthly/default/2023-07-01/GoogleMapsCompatible_Level7/{z}/{y}/{x}.jpg',
+            { attribution: 'NASA GIBS — MODIS NDVI July 2023', opacity: 0.8, maxZoom: 7 }
+        );
+
+        function toggleNDVI() {
+            const btn = document.getElementById('ndvi-btn');
+            const legend = document.getElementById('ndvi-legend');
+            if (ndviVisible) {
+                map.removeLayer(ndviLayer);
+                ndviVisible = false;
+                btn.innerText = 'NDVI Off';
+                btn.style.background = 'rgba(74,222,128,0.2)';
+                legend.style.display = 'none';
+            } else {
+                ndviLayer.addTo(map);
+                ndviVisible = true;
+                btn.innerText = 'NDVI On';
+                btn.style.background = 'rgba(74,222,128,0.6)';
+                legend.style.display = 'block';
+                // Zoom out if too zoomed in for NDVI
+                if (map.getZoom() > 7) map.setZoom(7);
+            }
+        }
+
+        // Drawing layer
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        const drawControl = new L.Control.Draw({
+            draw: {
+                polygon: {
+                    allowIntersection: false,
+                    showArea: true,
+                    shapeOptions: { color: '#4CAF50', fillOpacity: 0.2 }
+                },
+                rectangle: {
+                    shapeOptions: { color: '#4CAF50', fillOpacity: 0.2 }
+                },
+                polyline: false,
+                circle: false,
+                circlemarker: false,
+                marker: false
+            },
+            edit: { featureGroup: drawnItems }
+        });
+        map.addControl(drawControl);
+
+        // When polygon is drawn — use center for ET data
+        map.on(L.Draw.Event.CREATED, function(e) {
+            drawnItems.clearLayers();
+            drawnItems.addLayer(e.layer);
+            const bounds = e.layer.getBounds();
+            const center = bounds.getCenter();
+            currentLat = center.lat.toFixed(5);
+            currentLng = center.lng.toFixed(5);
+            document.getElementById('coords-text').innerText = 'Polygon center: ' + currentLat + ', ' + currentLng;
+            loadChart(currentLng, currentLat);
+        });
+
+        // Single click also works
         map.on('click', function(e) {
             currentLat = e.latlng.lat.toFixed(5);
             currentLng = e.latlng.lng.toFixed(5);
@@ -270,8 +351,8 @@ def chart():
                     const highAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'high'; });
                     const lowAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'low'; });
                     anomalyMsg = 'Anomaly detected: ';
-                    if (highAnomalies.length > 0) anomalyMsg += 'unusually high ET in ' + highAnomalies.map(function(d) { return d.time.slice(0,7); }).join(', ') + '. ';
-                    if (lowAnomalies.length > 0) anomalyMsg += 'unusually low ET in ' + lowAnomalies.map(function(d) { return d.time.slice(0,7); }).join(', ') + '.';
+                    if (highAnomalies.length > 0) anomalyMsg += 'unusually high ET in ' + highAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '. ';
+                    if (lowAnomalies.length > 0) anomalyMsg += 'unusually low ET in ' + lowAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '.';
                     alertBox.innerText = anomalyMsg;
                     alertBox.className = highAnomalies.length > 0 ? 'anomaly-box' : 'anomaly-box low';
                     alertBox.style.display = 'block';
@@ -291,16 +372,12 @@ def chart():
 
                 if (chart) chart.destroy();
 
-                // Group data by year for multi-year comparison
+                // Group by year for multi-year comparison
                 const years = {};
                 data.forEach(function(d) {
                     const year = d.time.slice(0, 4);
                     if (!years[year]) years[year] = [];
-                    years[year].push({
-                        et: d.et,
-                        anomaly: d.anomaly,
-                        anomaly_type: d.anomaly_type
-                    });
+                    years[year].push({ et: d.et, anomaly: d.anomaly, anomaly_type: d.anomaly_type });
                 });
 
                 const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -329,17 +406,11 @@ def chart():
 
                 chart = new Chart(document.getElementById('chart'), {
                     type: 'bar',
-                    data: {
-                        labels: monthLabels,
-                        datasets: datasets
-                    },
+                    data: { labels: monthLabels, datasets: datasets },
                     options: {
                         responsive: true,
                         plugins: {
-                            legend: {
-                                display: true,
-                                labels: { color: '#aaa', font: { size: 11 } }
-                            },
+                            legend: { display: true, labels: { color: '#aaa', font: { size: 11 } } },
                             tooltip: {
                                 callbacks: {
                                     label: function(ctx) {
@@ -347,6 +418,7 @@ def chart():
                                         const val = ctx.parsed.y.toFixed(2);
                                         const d = years[year][ctx.dataIndex];
                                         let label = year + ': ' + val + ' in';
+                                        if (d && d.normalized) label += ' (' + d.normalized + '% of avg)';
                                         if (d && d.anomaly) label += ' ⚠ ' + d.anomaly_type;
                                         return label;
                                     }
