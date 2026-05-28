@@ -88,6 +88,7 @@ def chart():
             <input type="text" id="end" value="2023-12-31"/>
             <button class="btn btn-heatmap" onclick="refreshHeatmap()">Load Heatmap</button>
             <button class="btn" id="ndvi-btn" onclick="toggleNDVI()" style="background:rgba(74,222,128,0.2);color:#4ade80;border:1px solid rgba(74,222,128,0.5);">NDVI Off</button>
+            <button class="btn" id="cdl-btn" onclick="toggleCDL()" style="background:rgba(251,191,36,0.2);color:#fbbf24;border:1px solid rgba(251,191,36,0.5);">CDL Off</button>
         </div>
     </header>
 
@@ -102,6 +103,17 @@ def chart():
                     <div style="font-weight:500;margin-bottom:2px;">NDVI (Vegetation)</div>
                     <div style="width:140px;height:8px;border-radius:4px;background:linear-gradient(to right,#8B4513,#d4a853,#90EE90,#228B22);margin:4px 0;"></div>
                     <div style="display:flex;justify-content:space-between;font-size:10px;opacity:0.7;"><span>Bare soil</span><span>Dense veg</span></div>
+                </div>
+                <div id="cdl-legend" style="display:none;margin-top:10px;">
+                    <div style="font-weight:500;margin-bottom:4px;">NLCD Land Cover</div>
+                    <div style="display:flex;flex-direction:column;gap:3px;font-size:10px;">
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#ab6c28;margin-right:4px;border-radius:2px;"></span>Cultivated Crops</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#dcd939;margin-right:4px;border-radius:2px;"></span>Hay/Pasture</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#68ab5f;margin-right:4px;border-radius:2px;"></span>Deciduous Forest</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#1c6330;margin-right:4px;border-radius:2px;"></span>Evergreen Forest</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#b8d9eb;margin-right:4px;border-radius:2px;"></span>Open Water</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#d2cdc0;margin-right:4px;border-radius:2px;"></span>Developed</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -176,6 +188,7 @@ def chart():
         let currentLng = null;
         let currentLat = null;
         let ndviVisible = false;
+        let cdlVisible = false;
 
         const map = L.map('map').setView([42.66, -77.05], 10);
 
@@ -192,10 +205,22 @@ def chart():
         satellite.addTo(map);
         labels.addTo(map);
 
-        // NDVI layer from NASA GIBS (MODIS Terra monthly NDVI)
+        // NDVI layer from NASA GIBS
         const ndviLayer = L.tileLayer(
             'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_L3_NDVI_Monthly/default/2023-07-01/GoogleMapsCompatible_Level7/{z}/{y}/{x}.jpg',
-            { attribution: 'NASA GIBS — MODIS NDVI July 2023', opacity: 0.8, maxZoom: 7 }
+            { attribution: 'NASA GIBS — MODIS NDVI July 2023', opacity: 1.0, maxZoom: 7 }
+        );
+
+        // CDL Cropland Data Layer from USDA NASS WMS
+        const cdlLayer = L.tileLayer.wms(
+            'https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/wms?',
+            {
+                layers: 'NLCD_2021_Land_Cover_L48',
+                format: 'image/png',
+                transparent: true,
+                opacity: 0.8,
+                attribution: 'USGS MRLC NLCD 2021'
+            }
         );
 
         function toggleNDVI() {
@@ -213,8 +238,27 @@ def chart():
                 btn.innerText = 'NDVI On';
                 btn.style.background = 'rgba(74,222,128,0.6)';
                 legend.style.display = 'block';
-                // Zoom out if too zoomed in for NDVI
                 if (map.getZoom() > 7) map.setZoom(7);
+            }
+        }
+
+        function toggleCDL() {
+            const btn = document.getElementById('cdl-btn');
+            const legend = document.getElementById('cdl-legend');
+            if (cdlVisible) {
+                map.removeLayer(cdlLayer);
+                cdlVisible = false;
+                btn.innerText = 'CDL Off';
+                btn.style.background = 'rgba(251,191,36,0.2)';
+                legend.style.display = 'none';
+                satellite.setOpacity(1.0);
+            } else {
+                satellite.setOpacity(0.5);
+                cdlLayer.addTo(map);
+                cdlVisible = true;
+                btn.innerText = 'CDL On';
+                btn.style.background = 'rgba(251,191,36,0.6)';
+                legend.style.display = 'block';
             }
         }
 
@@ -241,7 +285,6 @@ def chart():
         });
         map.addControl(drawControl);
 
-        // When polygon is drawn — use center for ET data
         map.on(L.Draw.Event.CREATED, function(e) {
             drawnItems.clearLayers();
             drawnItems.addLayer(e.layer);
@@ -251,13 +294,9 @@ def chart():
             currentLat = center.lat.toFixed(5);
             currentLng = center.lng.toFixed(5);
 
-            // Sample grid of points inside polygon
-            const north = bounds.getNorth();
-            const south = bounds.getSouth();
-            const east = bounds.getEast();
-            const west = bounds.getWest();
-
-            const gridSize = 2; // 3x3 = 9 sample points
+            const north = bounds.getNorth(), south = bounds.getSouth();
+            const east = bounds.getEast(), west = bounds.getWest();
+            const gridSize = 2;
             const latStep = (north - south) / gridSize;
             const lngStep = (east - west) / gridSize;
 
@@ -266,8 +305,7 @@ def chart():
                 for (let j = 0; j <= gridSize; j++) {
                     const lat = south + i * latStep;
                     const lng = west + j * lngStep;
-                    // Check if point is inside polygon
-                    if (e.layer.getBounds().contains([lat, lng])) {
+                    if (bounds.contains([lat, lng])) {
                         samplePoints.push({ lat: lat.toFixed(5), lng: lng.toFixed(5) });
                     }
                 }
@@ -277,7 +315,6 @@ def chart():
             loadPolygonChart(samplePoints, center);
         });
 
-        // Single click also works
         map.on('click', function(e) {
             currentLat = e.latlng.lat.toFixed(5);
             currentLng = e.latlng.lng.toFixed(5);
@@ -336,6 +373,7 @@ def chart():
             document.getElementById('coords-text').innerText = 'Lat: ' + lat + ', Lng: ' + lng;
             document.getElementById('empty-state').style.display = 'none';
             document.getElementById('loading-wrap').style.display = 'flex';
+            document.getElementById('loading-text').innerText = 'Loading satellite data...';
             document.getElementById('chart-wrapper').style.display = 'none';
             document.getElementById('anomaly-alert').style.display = 'none';
             document.getElementById('stats-row').style.display = 'none';
@@ -344,127 +382,8 @@ def chart():
             try {
                 const res = await fetch('/api/et/point?longitude=' + lng + '&latitude=' + lat + '&start_date=' + start + '&end_date=' + end);
                 const data = await res.json();
-
                 if (!Array.isArray(data)) throw new Error('Invalid response');
-
-                document.getElementById('loading-wrap').style.display = 'none';
-                document.getElementById('chart-wrapper').style.display = 'block';
-                document.getElementById('stats-row').style.display = 'grid';
-                document.getElementById('download-btn').style.display = 'block';
-
-                window.currentETData = data;
-                const values = data.map(function(d) { return d.et; });
-                const total = values.reduce(function(a, b) { return a + b; }, 0);
-                const avg = total / values.length;
-                const anomalies = data.filter(function(d) { return d.anomaly; });
-
-                document.getElementById('stat-total').innerText = total.toFixed(1);
-                document.getElementById('stat-avg').innerText = avg.toFixed(2);
-                document.getElementById('stat-anomalies').innerText = anomalies.length;
-
-                const anomalyCard = document.getElementById('stat-anomaly-card');
-                if (anomalies.length > 0) {
-                    anomalyCard.classList.add('anomaly');
-                } else {
-                    anomalyCard.classList.remove('anomaly');
-                }
-
-                let anomalyMsg = '';
-                if (anomalies.length > 0) {
-                    const alertBox = document.getElementById('anomaly-alert');
-                    const highAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'high'; });
-                    const lowAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'low'; });
-                    anomalyMsg = 'Anomaly detected: ';
-                    if (highAnomalies.length > 0) anomalyMsg += 'unusually high ET in ' + highAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '. ';
-                    if (lowAnomalies.length > 0) anomalyMsg += 'unusually low ET in ' + lowAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '.';
-                    alertBox.innerText = anomalyMsg;
-                    alertBox.className = highAnomalies.length > 0 ? 'anomaly-box' : 'anomaly-box low';
-                    alertBox.style.display = 'block';
-                }
-
-                if (marker) marker.remove();
-                const coordsDot = document.getElementById('coords-dot');
-                if (anomalies.length > 0) {
-                    coordsDot.className = 'coords-dot anomaly';
-                    marker = L.circleMarker([lat, lng], { radius: 14, color: 'white', fillColor: '#ef4444', fillOpacity: 0.9, weight: 2 }).addTo(map);
-                    marker.bindPopup('<b style="color:#ef4444;">⚠ Anomaly Detected</b><br>' + anomalyMsg + '<br><small>Lat: ' + lat + ', Lng: ' + lng + '</small>').openPopup();
-                } else {
-                    coordsDot.className = 'coords-dot';
-                    marker = L.circleMarker([lat, lng], { radius: 8, color: 'white', fillColor: '#4CAF50', fillOpacity: 1, weight: 2 }).addTo(map);
-                    marker.bindPopup('<b style="color:#4CAF50;">✓ Normal ET levels</b><br><small>Lat: ' + lat + ', Lng: ' + lng + '</small>');
-                }
-
-                if (chart) chart.destroy();
-
-                // Group by year for multi-year comparison
-                const years = {};
-                data.forEach(function(d) {
-                    const year = d.time.slice(0, 4);
-                    if (!years[year]) years[year] = [];
-                    years[year].push({ et: d.et, anomaly: d.anomaly, anomaly_type: d.anomaly_type });
-                });
-
-                const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                const yearColors = {
-                    '2021': 'rgba(99,179,237,0.85)',
-                    '2022': 'rgba(154,205,100,0.85)',
-                    '2023': 'rgba(246,173,85,0.85)',
-                    '2024': 'rgba(203,139,255,0.85)'
-                };
-
-                const yearList = Object.keys(years).sort();
-                const datasets = yearList.map(function(year) {
-                    return {
-                        label: year,
-                        data: years[year].map(function(d) { return d.et; }),
-                        backgroundColor: years[year].map(function(d) {
-                            if (d.anomaly && d.anomaly_type === 'high') return 'rgba(239,68,68,0.85)';
-                            if (d.anomaly && d.anomaly_type === 'low') return 'rgba(234,179,8,0.85)';
-                            return yearColors[year] || 'rgba(37,99,235,0.8)';
-                        }),
-                        borderColor: yearColors[year] || 'rgba(37,99,235,0.8)',
-                        borderWidth: 1,
-                        borderRadius: 3
-                    };
-                });
-
-                chart = new Chart(document.getElementById('chart'), {
-                    type: 'bar',
-                    data: { labels: monthLabels, datasets: datasets },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: { display: true, labels: { color: '#aaa', font: { size: 11 } } },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(ctx) {
-                                        const year = ctx.dataset.label;
-                                        const val = ctx.parsed.y.toFixed(2);
-                                        const d = years[year][ctx.dataIndex];
-                                        let label = year + ': ' + val + ' in';
-                                        if (d && d.normalized) label += ' (' + d.normalized + '% of avg)';
-                                        if (d && d.anomaly) label += ' ⚠ ' + d.anomaly_type;
-                                        return label;
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: { color: '#aaa' },
-                                grid: { color: 'rgba(255,255,255,0.06)' },
-                                title: { display: true, text: 'ET (inches)', color: '#aaa', font: { size: 11 } }
-                            },
-                            x: {
-                                ticks: { color: '#aaa', font: { size: 10 } },
-                                grid: { color: 'rgba(255,255,255,0.06)' },
-                                title: { display: true, text: 'Month', color: '#aaa' }
-                            }
-                        }
-                    }
-                });
-
+                renderChart(data, lat, lng);
             } catch(e) {
                 document.getElementById('loading-wrap').style.display = 'none';
                 document.getElementById('empty-state').style.display = 'flex';
@@ -485,7 +404,6 @@ def chart():
             document.getElementById('download-btn').style.display = 'none';
 
             try {
-                // Fetch ET for all sample points
                 const allData = [];
                 for (const p of points) {
                     try {
@@ -499,7 +417,6 @@ def chart():
 
                 if (allData.length === 0) throw new Error('No data');
 
-                // Average ET across all sample points per time period
                 const timeMap = {};
                 allData.forEach(function(pointData) {
                     pointData.forEach(function(d) {
@@ -508,135 +425,139 @@ def chart():
                     });
                 });
 
-                // Build averaged dataset
-                const averaged = Object.keys(timeMap).sort().map(function(time) {
-                    const vals = timeMap[time];
-                    const avgET = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
-                    return { time: time, et: round2(avgET) };
-                });
-
-                function round2(n) { return Math.round(n * 100) / 100; }
-
-                // Now run anomaly detection on averaged data via API
-                // Re-use first point's anomaly structure but with averaged ET values
                 const firstData = allData[0];
-                const mergedData = firstData.map(function(d, i) {
-                    const avg = averaged[i] ? averaged[i].et : d.et;
-                    return Object.assign({}, d, { et: avg });
+                const mergedData = firstData.map(function(d) {
+                    const vals = timeMap[d.time] || [d.et];
+                    const avgET = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+                    return Object.assign({}, d, { et: Math.round(avgET * 100) / 100 });
                 });
 
-                document.getElementById('coords-text').innerText = 'Polygon avg (' + allData.length + ' points sampled) — center: ' + center.lat.toFixed(4) + ', ' + center.lng.toFixed(4);
+                document.getElementById('coords-text').innerText = 'Polygon avg (' + allData.length + ' points) — center: ' + center.lat.toFixed(4) + ', ' + center.lng.toFixed(4);
                 currentLat = center.lat.toFixed(5);
                 currentLng = center.lng.toFixed(5);
-                window.currentETData = mergedData;
-
-                document.getElementById('loading-wrap').style.display = 'none';
-                document.getElementById('chart-wrapper').style.display = 'block';
-                document.getElementById('stats-row').style.display = 'grid';
-                document.getElementById('download-btn').style.display = 'block';
-
-                const values = mergedData.map(function(d) { return d.et; });
-                const total = values.reduce(function(a, b) { return a + b; }, 0);
-                const avg = total / values.length;
-                const anomalies = mergedData.filter(function(d) { return d.anomaly; });
-
-                document.getElementById('stat-total').innerText = total.toFixed(1);
-                document.getElementById('stat-avg').innerText = avg.toFixed(2);
-                document.getElementById('stat-anomalies').innerText = anomalies.length;
-
-                const anomalyCard = document.getElementById('stat-anomaly-card');
-                if (anomalies.length > 0) {
-                    anomalyCard.classList.add('anomaly');
-                } else {
-                    anomalyCard.classList.remove('anomaly');
-                }
-
-                if (anomalies.length > 0) {
-                    const alertBox = document.getElementById('anomaly-alert');
-                    const highAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'high'; });
-                    const lowAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'low'; });
-                    let anomalyMsg = 'Polygon anomaly (avg of ' + allData.length + ' points): ';
-                    if (highAnomalies.length > 0) anomalyMsg += 'high ET in ' + highAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '. ';
-                    if (lowAnomalies.length > 0) anomalyMsg += 'low ET in ' + lowAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '.';
-                    alertBox.innerText = anomalyMsg;
-                    alertBox.className = highAnomalies.length > 0 ? 'anomaly-box' : 'anomaly-box low';
-                    alertBox.style.display = 'block';
-                }
-
-                if (marker) marker.remove();
-                marker = L.circleMarker([center.lat, center.lng], {
-                    radius: anomalies.length > 0 ? 14 : 8,
-                    color: 'white',
-                    fillColor: anomalies.length > 0 ? '#ef4444' : '#4CAF50',
-                    fillOpacity: 0.9, weight: 2
-                }).addTo(map);
-
-                if (chart) chart.destroy();
-
-                const years = {};
-                mergedData.forEach(function(d) {
-                    const year = d.time.slice(0, 4);
-                    if (!years[year]) years[year] = [];
-                    years[year].push({ et: d.et, anomaly: d.anomaly, anomaly_type: d.anomaly_type, normalized: d.normalized });
-                });
-
-                const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                const yearColors = {
-                    '2021': 'rgba(99,179,237,0.85)',
-                    '2022': 'rgba(154,205,100,0.85)',
-                    '2023': 'rgba(246,173,85,0.85)',
-                    '2024': 'rgba(203,139,255,0.85)'
-                };
-
-                const yearList = Object.keys(years).sort();
-                const datasets = yearList.map(function(year) {
-                    return {
-                        label: year,
-                        data: years[year].map(function(d) { return d.et; }),
-                        backgroundColor: years[year].map(function(d) {
-                            if (d.anomaly && d.anomaly_type === 'high') return 'rgba(239,68,68,0.85)';
-                            if (d.anomaly && d.anomaly_type === 'low') return 'rgba(234,179,8,0.85)';
-                            return yearColors[year] || 'rgba(37,99,235,0.8)';
-                        }),
-                        borderColor: yearColors[year] || 'rgba(37,99,235,0.8)',
-                        borderWidth: 1,
-                        borderRadius: 3
-                    };
-                });
-
-                chart = new Chart(document.getElementById('chart'), {
-                    type: 'bar',
-                    data: { labels: monthLabels, datasets: datasets },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: { display: true, labels: { color: '#aaa', font: { size: 11 } } },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(ctx) {
-                                        const year = ctx.dataset.label;
-                                        const val = ctx.parsed.y.toFixed(2);
-                                        const d = years[year][ctx.dataIndex];
-                                        let label = year + ': ' + val + ' in';
-                                        if (d && d.normalized) label += ' (' + d.normalized + '% of avg)';
-                                        if (d && d.anomaly) label += ' ⚠ ' + d.anomaly_type;
-                                        return label;
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: { beginAtZero: true, ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: 'ET (inches) — polygon avg', color: '#aaa', font: { size: 11 } } },
-                            x: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: 'Month', color: '#aaa' } }
-                        }
-                    }
-                });
-
+                renderChart(mergedData, center.lat.toFixed(5), center.lng.toFixed(5), true, allData.length);
             } catch(e) {
                 document.getElementById('loading-wrap').style.display = 'none';
                 document.getElementById('empty-state').style.display = 'flex';
                 document.getElementById('empty-state').querySelector('p').innerText = 'Error sampling polygon. Try a smaller area.';
             }
+        }
+
+        function renderChart(data, lat, lng, isPolygon, numPoints) {
+            document.getElementById('loading-wrap').style.display = 'none';
+            document.getElementById('chart-wrapper').style.display = 'block';
+            document.getElementById('stats-row').style.display = 'grid';
+            document.getElementById('download-btn').style.display = 'block';
+
+            window.currentETData = data;
+            const values = data.map(function(d) { return d.et; });
+            const total = values.reduce(function(a, b) { return a + b; }, 0);
+            const avg = total / values.length;
+            const anomalies = data.filter(function(d) { return d.anomaly; });
+
+            document.getElementById('stat-total').innerText = total.toFixed(1);
+            document.getElementById('stat-avg').innerText = avg.toFixed(2);
+            document.getElementById('stat-anomalies').innerText = anomalies.length;
+
+            const anomalyCard = document.getElementById('stat-anomaly-card');
+            if (anomalies.length > 0) { anomalyCard.classList.add('anomaly'); }
+            else { anomalyCard.classList.remove('anomaly'); }
+
+            let anomalyMsg = '';
+            if (anomalies.length > 0) {
+                const alertBox = document.getElementById('anomaly-alert');
+                const highAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'high'; });
+                const lowAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'low'; });
+                const prefix = isPolygon ? 'Polygon anomaly (avg of ' + numPoints + ' points): ' : 'Anomaly detected: ';
+                anomalyMsg = prefix;
+                if (highAnomalies.length > 0) anomalyMsg += 'unusually high ET in ' + highAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '. ';
+                if (lowAnomalies.length > 0) anomalyMsg += 'unusually low ET in ' + lowAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '.';
+                alertBox.innerText = anomalyMsg;
+                alertBox.className = highAnomalies.length > 0 ? 'anomaly-box' : 'anomaly-box low';
+                alertBox.style.display = 'block';
+            }
+
+            if (marker) marker.remove();
+            const coordsDot = document.getElementById('coords-dot');
+            if (anomalies.length > 0) {
+                coordsDot.className = 'coords-dot anomaly';
+                marker = L.circleMarker([lat, lng], { radius: 14, color: 'white', fillColor: '#ef4444', fillOpacity: 0.9, weight: 2 }).addTo(map);
+                marker.bindPopup('<b style="color:#ef4444;">⚠ Anomaly Detected</b><br>' + anomalyMsg + '<br><small>Lat: ' + lat + ', Lng: ' + lng + '</small>').openPopup();
+            } else {
+                coordsDot.className = 'coords-dot';
+                marker = L.circleMarker([lat, lng], { radius: 8, color: 'white', fillColor: '#4CAF50', fillOpacity: 1, weight: 2 }).addTo(map);
+                marker.bindPopup('<b style="color:#4CAF50;">✓ Normal ET levels</b><br><small>Lat: ' + lat + ', Lng: ' + lng + '</small>');
+            }
+
+            if (chart) chart.destroy();
+
+            const years = {};
+            data.forEach(function(d) {
+                const year = d.time.slice(0, 4);
+                if (!years[year]) years[year] = [];
+                years[year].push({ et: d.et, anomaly: d.anomaly, anomaly_type: d.anomaly_type, normalized: d.normalized });
+            });
+
+            const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const yearColors = {
+                '2021': 'rgba(99,179,237,0.85)',
+                '2022': 'rgba(154,205,100,0.85)',
+                '2023': 'rgba(246,173,85,0.85)',
+                '2024': 'rgba(203,139,255,0.85)'
+            };
+
+            const yearList = Object.keys(years).sort();
+            const datasets = yearList.map(function(year) {
+                return {
+                    label: year,
+                    data: years[year].map(function(d) { return d.et; }),
+                    backgroundColor: years[year].map(function(d) {
+                        if (d.anomaly && d.anomaly_type === 'high') return 'rgba(239,68,68,0.85)';
+                        if (d.anomaly && d.anomaly_type === 'low') return 'rgba(234,179,8,0.85)';
+                        return yearColors[year] || 'rgba(37,99,235,0.8)';
+                    }),
+                    borderColor: yearColors[year] || 'rgba(37,99,235,0.8)',
+                    borderWidth: 1,
+                    borderRadius: 3
+                };
+            });
+
+            chart = new Chart(document.getElementById('chart'), {
+                type: 'bar',
+                data: { labels: monthLabels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: true, labels: { color: '#aaa', font: { size: 11 } } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    const year = ctx.dataset.label;
+                                    const val = ctx.parsed.y.toFixed(2);
+                                    const d = years[year][ctx.dataIndex];
+                                    let label = year + ': ' + val + ' in';
+                                    if (d && d.normalized) label += ' (' + d.normalized + '% of avg)';
+                                    if (d && d.anomaly) label += ' ⚠ ' + d.anomaly_type;
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#aaa' },
+                            grid: { color: 'rgba(255,255,255,0.06)' },
+                            title: { display: true, text: isPolygon ? 'ET (inches) — polygon avg' : 'ET (inches)', color: '#aaa', font: { size: 11 } }
+                        },
+                        x: {
+                            ticks: { color: '#aaa', font: { size: 10 } },
+                            grid: { color: 'rgba(255,255,255,0.06)' },
+                            title: { display: true, text: 'Month', color: '#aaa' }
+                        }
+                    }
+                }
+            });
         }
 
         function downloadReport() {
