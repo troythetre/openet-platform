@@ -245,12 +245,36 @@ def chart():
         map.on(L.Draw.Event.CREATED, function(e) {
             drawnItems.clearLayers();
             drawnItems.addLayer(e.layer);
+
             const bounds = e.layer.getBounds();
             const center = bounds.getCenter();
             currentLat = center.lat.toFixed(5);
             currentLng = center.lng.toFixed(5);
-            document.getElementById('coords-text').innerText = 'Polygon center: ' + currentLat + ', ' + currentLng;
-            loadChart(currentLng, currentLat);
+
+            // Sample grid of points inside polygon
+            const north = bounds.getNorth();
+            const south = bounds.getSouth();
+            const east = bounds.getEast();
+            const west = bounds.getWest();
+
+            const gridSize = 2; // 3x3 = 9 sample points
+            const latStep = (north - south) / gridSize;
+            const lngStep = (east - west) / gridSize;
+
+            const samplePoints = [];
+            for (let i = 0; i <= gridSize; i++) {
+                for (let j = 0; j <= gridSize; j++) {
+                    const lat = south + i * latStep;
+                    const lng = west + j * lngStep;
+                    // Check if point is inside polygon
+                    if (e.layer.getBounds().contains([lat, lng])) {
+                        samplePoints.push({ lat: lat.toFixed(5), lng: lng.toFixed(5) });
+                    }
+                }
+            }
+
+            document.getElementById('coords-text').innerText = 'Polygon — sampling ' + samplePoints.length + ' points...';
+            loadPolygonChart(samplePoints, center);
         });
 
         // Single click also works
@@ -445,6 +469,173 @@ def chart():
                 document.getElementById('loading-wrap').style.display = 'none';
                 document.getElementById('empty-state').style.display = 'flex';
                 document.getElementById('empty-state').querySelector('p').innerText = 'No data for this location. Try clicking on farmland or vineyard areas.';
+            }
+        }
+
+        async function loadPolygonChart(points, center) {
+            const start = document.getElementById('start').value;
+            const end = document.getElementById('end').value;
+
+            document.getElementById('empty-state').style.display = 'none';
+            document.getElementById('loading-wrap').style.display = 'flex';
+            document.getElementById('loading-text').innerText = 'Sampling ' + points.length + ' points inside polygon...';
+            document.getElementById('chart-wrapper').style.display = 'none';
+            document.getElementById('anomaly-alert').style.display = 'none';
+            document.getElementById('stats-row').style.display = 'none';
+            document.getElementById('download-btn').style.display = 'none';
+
+            try {
+                // Fetch ET for all sample points
+                const allData = [];
+                for (const p of points) {
+                    try {
+                        const res = await fetch('/api/et/point?longitude=' + p.lng + '&latitude=' + p.lat + '&start_date=' + start + '&end_date=' + end);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (Array.isArray(data)) allData.push(data);
+                        }
+                    } catch(e) {}
+                }
+
+                if (allData.length === 0) throw new Error('No data');
+
+                // Average ET across all sample points per time period
+                const timeMap = {};
+                allData.forEach(function(pointData) {
+                    pointData.forEach(function(d) {
+                        if (!timeMap[d.time]) timeMap[d.time] = [];
+                        timeMap[d.time].push(d.et);
+                    });
+                });
+
+                // Build averaged dataset
+                const averaged = Object.keys(timeMap).sort().map(function(time) {
+                    const vals = timeMap[time];
+                    const avgET = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+                    return { time: time, et: round2(avgET) };
+                });
+
+                function round2(n) { return Math.round(n * 100) / 100; }
+
+                // Now run anomaly detection on averaged data via API
+                // Re-use first point's anomaly structure but with averaged ET values
+                const firstData = allData[0];
+                const mergedData = firstData.map(function(d, i) {
+                    const avg = averaged[i] ? averaged[i].et : d.et;
+                    return Object.assign({}, d, { et: avg });
+                });
+
+                document.getElementById('coords-text').innerText = 'Polygon avg (' + allData.length + ' points sampled) — center: ' + center.lat.toFixed(4) + ', ' + center.lng.toFixed(4);
+                currentLat = center.lat.toFixed(5);
+                currentLng = center.lng.toFixed(5);
+                window.currentETData = mergedData;
+
+                document.getElementById('loading-wrap').style.display = 'none';
+                document.getElementById('chart-wrapper').style.display = 'block';
+                document.getElementById('stats-row').style.display = 'grid';
+                document.getElementById('download-btn').style.display = 'block';
+
+                const values = mergedData.map(function(d) { return d.et; });
+                const total = values.reduce(function(a, b) { return a + b; }, 0);
+                const avg = total / values.length;
+                const anomalies = mergedData.filter(function(d) { return d.anomaly; });
+
+                document.getElementById('stat-total').innerText = total.toFixed(1);
+                document.getElementById('stat-avg').innerText = avg.toFixed(2);
+                document.getElementById('stat-anomalies').innerText = anomalies.length;
+
+                const anomalyCard = document.getElementById('stat-anomaly-card');
+                if (anomalies.length > 0) {
+                    anomalyCard.classList.add('anomaly');
+                } else {
+                    anomalyCard.classList.remove('anomaly');
+                }
+
+                if (anomalies.length > 0) {
+                    const alertBox = document.getElementById('anomaly-alert');
+                    const highAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'high'; });
+                    const lowAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'low'; });
+                    let anomalyMsg = 'Polygon anomaly (avg of ' + allData.length + ' points): ';
+                    if (highAnomalies.length > 0) anomalyMsg += 'high ET in ' + highAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '. ';
+                    if (lowAnomalies.length > 0) anomalyMsg += 'low ET in ' + lowAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '.';
+                    alertBox.innerText = anomalyMsg;
+                    alertBox.className = highAnomalies.length > 0 ? 'anomaly-box' : 'anomaly-box low';
+                    alertBox.style.display = 'block';
+                }
+
+                if (marker) marker.remove();
+                marker = L.circleMarker([center.lat, center.lng], {
+                    radius: anomalies.length > 0 ? 14 : 8,
+                    color: 'white',
+                    fillColor: anomalies.length > 0 ? '#ef4444' : '#4CAF50',
+                    fillOpacity: 0.9, weight: 2
+                }).addTo(map);
+
+                if (chart) chart.destroy();
+
+                const years = {};
+                mergedData.forEach(function(d) {
+                    const year = d.time.slice(0, 4);
+                    if (!years[year]) years[year] = [];
+                    years[year].push({ et: d.et, anomaly: d.anomaly, anomaly_type: d.anomaly_type, normalized: d.normalized });
+                });
+
+                const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const yearColors = {
+                    '2021': 'rgba(99,179,237,0.85)',
+                    '2022': 'rgba(154,205,100,0.85)',
+                    '2023': 'rgba(246,173,85,0.85)',
+                    '2024': 'rgba(203,139,255,0.85)'
+                };
+
+                const yearList = Object.keys(years).sort();
+                const datasets = yearList.map(function(year) {
+                    return {
+                        label: year,
+                        data: years[year].map(function(d) { return d.et; }),
+                        backgroundColor: years[year].map(function(d) {
+                            if (d.anomaly && d.anomaly_type === 'high') return 'rgba(239,68,68,0.85)';
+                            if (d.anomaly && d.anomaly_type === 'low') return 'rgba(234,179,8,0.85)';
+                            return yearColors[year] || 'rgba(37,99,235,0.8)';
+                        }),
+                        borderColor: yearColors[year] || 'rgba(37,99,235,0.8)',
+                        borderWidth: 1,
+                        borderRadius: 3
+                    };
+                });
+
+                chart = new Chart(document.getElementById('chart'), {
+                    type: 'bar',
+                    data: { labels: monthLabels, datasets: datasets },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true, labels: { color: '#aaa', font: { size: 11 } } },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const year = ctx.dataset.label;
+                                        const val = ctx.parsed.y.toFixed(2);
+                                        const d = years[year][ctx.dataIndex];
+                                        let label = year + ': ' + val + ' in';
+                                        if (d && d.normalized) label += ' (' + d.normalized + '% of avg)';
+                                        if (d && d.anomaly) label += ' ⚠ ' + d.anomaly_type;
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: 'ET (inches) — polygon avg', color: '#aaa', font: { size: 11 } } },
+                            x: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: 'Month', color: '#aaa' } }
+                        }
+                    }
+                });
+
+            } catch(e) {
+                document.getElementById('loading-wrap').style.display = 'none';
+                document.getElementById('empty-state').style.display = 'flex';
+                document.getElementById('empty-state').querySelector('p').innerText = 'Error sampling polygon. Try a smaller area.';
             }
         }
 
