@@ -404,16 +404,34 @@ def chart():
             document.getElementById('download-btn').style.display = 'none';
 
             try {
-                const allData = [];
-                for (const p of points) {
-                    try {
-                        const res = await fetch('/api/et/point?longitude=' + p.lng + '&latitude=' + p.lat + '&start_date=' + start + '&end_date=' + end);
-                        if (res.ok) {
-                            const data = await res.json();
-                            if (Array.isArray(data)) allData.push(data);
-                        }
-                    } catch(e) {}
-                }
+            const allData = [];
+            let attempted = 0;
+            for (const p of points) {
+                attempted++;
+                document.getElementById('loading-text').innerText = 'Sampling point ' + attempted + ' of ' + points.length + '...';
+                try {
+                    const res = await fetch('/api/et/point?longitude=' + p.lng + '&latitude=' + p.lat + '&start_date=' + start + '&end_date=' + end);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (Array.isArray(data) && data.length > 0) allData.push(data);
+                    }
+                } catch(e) {}
+                await new Promise(r => setTimeout(r, 200));
+            }
+
+            if (allData.length === 0) {
+                // Fall back to center point
+                document.getElementById('loading-text').innerText = 'Falling back to center point...';
+                try {
+                    const res = await fetch('/api/et/point?longitude=' + center.lng.toFixed(5) + '&latitude=' + center.lat.toFixed(5) + '&start_date=' + start + '&end_date=' + end);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (Array.isArray(data) && data.length > 0) allData.push(data);
+                    }
+                } catch(e) {}
+            }
+
+            if (allData.length === 0) throw new Error('No data');
 
                 if (allData.length === 0) throw new Error('No data');
 
