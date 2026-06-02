@@ -115,6 +115,7 @@ def get_et_point(
             f"{OPENET_BASE_URL}/raster/timeseries/point",
             json=payload,
             headers=headers,
+            timeout=60,
         )
 
         # Log the query
