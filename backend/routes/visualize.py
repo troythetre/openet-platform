@@ -83,7 +83,7 @@ def chart():
                 onkeydown="if(event.key==='Enter') searchLocation()"/>
             <button class="btn btn-go" onclick="searchLocation()">Go</button>
             <label>From</label>
-            <input type="text" id="start" value="2021-01-01"/>
+            <input type="text" id="start" value="2022-01-01"/>
             <label>To</label>
             <input type="text" id="end" value="2023-12-31"/>
             <button class="btn btn-heatmap" onclick="refreshHeatmap()">Load Heatmap</button>

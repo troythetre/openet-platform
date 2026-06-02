@@ -93,6 +93,7 @@ def get_et_point(
         )
 
         if cached:
+            print(f"CACHE HIT: {longitude}, {latitude}")
             data = json.loads(cached.data)
             return detect_anomalies(data)
 
@@ -133,6 +134,7 @@ def get_et_point(
             raise HTTPException(status_code=response.status_code, detail=response.text)
 
         data = response.json()
+        print(f"API CALL: {longitude}, {latitude}")
 
         # Save to cache
         cache_entry = ETCache(
