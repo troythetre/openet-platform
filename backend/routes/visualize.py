@@ -190,53 +190,40 @@ def chart():
         let ndviVisible = false;
         let cdlVisible = false;
 
+        // Round to 2 decimal places (~1km) for cache efficiency
+        function r2(n) { return Math.round(parseFloat(n) * 100) / 100; }
+
         const map = L.map('map').setView([42.66, -77.05], 10);
 
-        // Satellite base layer
         const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             attribution: 'Tiles © Esri', maxZoom: 19
         });
-
-        // Street labels overlay
         const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
             attribution: '© OpenStreetMap © CARTO', maxZoom: 19
         });
-
         satellite.addTo(map);
         labels.addTo(map);
 
-        // NDVI layer from NASA GIBS
         const ndviLayer = L.tileLayer(
             'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_L3_NDVI_Monthly/default/2023-07-01/GoogleMapsCompatible_Level7/{z}/{y}/{x}.jpg',
             { attribution: 'NASA GIBS — MODIS NDVI July 2023', opacity: 1.0, maxZoom: 7 }
         );
 
-        // CDL Cropland Data Layer from USDA NASS WMS
         const cdlLayer = L.tileLayer.wms(
             'https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/wms?',
-            {
-                layers: 'NLCD_2021_Land_Cover_L48',
-                format: 'image/png',
-                transparent: true,
-                opacity: 0.8,
-                attribution: 'USGS MRLC NLCD 2021'
-            }
+            { layers: 'NLCD_2021_Land_Cover_L48', format: 'image/png', transparent: true, opacity: 0.8, attribution: 'USGS MRLC NLCD 2021' }
         );
 
         function toggleNDVI() {
             const btn = document.getElementById('ndvi-btn');
             const legend = document.getElementById('ndvi-legend');
             if (ndviVisible) {
-                map.removeLayer(ndviLayer);
-                ndviVisible = false;
-                btn.innerText = 'NDVI Off';
-                btn.style.background = 'rgba(74,222,128,0.2)';
+                map.removeLayer(ndviLayer); ndviVisible = false;
+                btn.innerText = 'NDVI Off'; btn.style.background = 'rgba(74,222,128,0.2)';
                 legend.style.display = 'none';
             } else {
-                ndviLayer.addTo(map);
-                ndviVisible = true;
-                btn.innerText = 'NDVI On';
-                btn.style.background = 'rgba(74,222,128,0.6)';
+                ndviLayer.addTo(map); ndviVisible = true;
+                btn.innerText = 'NDVI On'; btn.style.background = 'rgba(74,222,128,0.6)';
                 legend.style.display = 'block';
                 if (map.getZoom() > 7) map.setZoom(7);
             }
@@ -246,40 +233,23 @@ def chart():
             const btn = document.getElementById('cdl-btn');
             const legend = document.getElementById('cdl-legend');
             if (cdlVisible) {
-                map.removeLayer(cdlLayer);
-                cdlVisible = false;
-                btn.innerText = 'CDL Off';
-                btn.style.background = 'rgba(251,191,36,0.2)';
-                legend.style.display = 'none';
-                satellite.setOpacity(1.0);
+                map.removeLayer(cdlLayer); cdlVisible = false;
+                btn.innerText = 'CDL Off'; btn.style.background = 'rgba(251,191,36,0.2)';
+                legend.style.display = 'none'; satellite.setOpacity(1.0);
             } else {
-                satellite.setOpacity(0.5);
-                cdlLayer.addTo(map);
-                cdlVisible = true;
-                btn.innerText = 'CDL On';
-                btn.style.background = 'rgba(251,191,36,0.6)';
+                satellite.setOpacity(0.5); cdlLayer.addTo(map); cdlVisible = true;
+                btn.innerText = 'CDL On'; btn.style.background = 'rgba(251,191,36,0.6)';
                 legend.style.display = 'block';
             }
         }
 
-        // Drawing layer
         const drawnItems = new L.FeatureGroup();
         map.addLayer(drawnItems);
-
         const drawControl = new L.Control.Draw({
             draw: {
-                polygon: {
-                    allowIntersection: false,
-                    showArea: true,
-                    shapeOptions: { color: '#4CAF50', fillOpacity: 0.2 }
-                },
-                rectangle: {
-                    shapeOptions: { color: '#4CAF50', fillOpacity: 0.2 }
-                },
-                polyline: false,
-                circle: false,
-                circlemarker: false,
-                marker: false
+                polygon: { allowIntersection: false, showArea: true, shapeOptions: { color: '#4CAF50', fillOpacity: 0.2 } },
+                rectangle: { shapeOptions: { color: '#4CAF50', fillOpacity: 0.2 } },
+                polyline: false, circle: false, circlemarker: false, marker: false
             },
             edit: { featureGroup: drawnItems }
         });
@@ -288,36 +258,31 @@ def chart():
         map.on(L.Draw.Event.CREATED, function(e) {
             drawnItems.clearLayers();
             drawnItems.addLayer(e.layer);
-
             const bounds = e.layer.getBounds();
             const center = bounds.getCenter();
-            currentLat = center.lat.toFixed(5);
-            currentLng = center.lng.toFixed(5);
+            currentLat = r2(center.lat).toFixed(2);
+            currentLng = r2(center.lng).toFixed(2);
 
             const north = bounds.getNorth(), south = bounds.getSouth();
             const east = bounds.getEast(), west = bounds.getWest();
-            const gridSize = 2;
-            const latStep = (north - south) / gridSize;
-            const lngStep = (east - west) / gridSize;
+            // Use only center point to protect API quota
+            const samplePoints = [{ lat: r2(center.lat).toFixed(2), lng: r2(center.lng).toFixed(2) }];
 
-            const samplePoints = [];
-            for (let i = 0; i <= gridSize; i++) {
-                for (let j = 0; j <= gridSize; j++) {
-                    const lat = south + i * latStep;
-                    const lng = west + j * lngStep;
-                    if (bounds.contains([lat, lng])) {
-                        samplePoints.push({ lat: lat.toFixed(5), lng: lng.toFixed(5) });
-                    }
-                }
-            }
+            // Deduplicate sample points
+            const seen = new Set();
+            const uniquePoints = samplePoints.filter(function(p) {
+                const key = p.lat + ',' + p.lng;
+                if (seen.has(key)) return false;
+                seen.add(key); return true;
+            });
 
-            document.getElementById('coords-text').innerText = 'Polygon — sampling ' + samplePoints.length + ' points...';
-            loadPolygonChart(samplePoints, center);
+            document.getElementById('coords-text').innerText = 'Polygon — sampling ' + uniquePoints.length + ' points...';
+            loadPolygonChart(uniquePoints, center);
         });
 
         map.on('click', function(e) {
-            currentLat = e.latlng.lat.toFixed(5);
-            currentLng = e.latlng.lng.toFixed(5);
+            currentLat = r2(e.latlng.lat).toFixed(2);
+            currentLng = r2(e.latlng.lng).toFixed(2);
             loadChart(currentLng, currentLat);
         });
 
@@ -337,12 +302,12 @@ def chart():
             const points = [];
             for (let i = 0; i <= gridSize; i++)
                 for (let j = 0; j <= gridSize; j++)
-                    points.push({ lat: south + i * latStep, lng: west + j * lngStep });
+                    points.push({ lat: r2(south + i * latStep), lng: r2(west + j * lngStep) });
 
             const results = [];
             for (const p of points) {
                 try {
-                    const res = await fetch('/api/et/point?longitude=' + p.lng.toFixed(4) + '&latitude=' + p.lat.toFixed(4) + '&start_date=' + start + '&end_date=' + end);
+                    const res = await fetch('/api/et/point?longitude=' + p.lng.toFixed(2) + '&latitude=' + p.lat.toFixed(2) + '&start_date=' + start + '&end_date=' + end);
                     if (res.ok) {
                         const data = await res.json();
                         if (Array.isArray(data)) {
@@ -369,7 +334,6 @@ def chart():
         async function loadChart(lng, lat) {
             const start = document.getElementById('start').value;
             const end = document.getElementById('end').value;
-
             document.getElementById('coords-text').innerText = 'Lat: ' + lat + ', Lng: ' + lng;
             document.getElementById('empty-state').style.display = 'none';
             document.getElementById('loading-wrap').style.display = 'flex';
@@ -378,7 +342,6 @@ def chart():
             document.getElementById('anomaly-alert').style.display = 'none';
             document.getElementById('stats-row').style.display = 'none';
             document.getElementById('download-btn').style.display = 'none';
-
             try {
                 const res = await fetch('/api/et/point?longitude=' + lng + '&latitude=' + lat + '&start_date=' + start + '&end_date=' + end);
                 const data = await res.json();
@@ -394,44 +357,40 @@ def chart():
         async function loadPolygonChart(points, center) {
             const start = document.getElementById('start').value;
             const end = document.getElementById('end').value;
-
             document.getElementById('empty-state').style.display = 'none';
             document.getElementById('loading-wrap').style.display = 'flex';
-            document.getElementById('loading-text').innerText = 'Sampling ' + points.length + ' points inside polygon...';
+            document.getElementById('loading-text').innerText = 'Sampling ' + points.length + ' points...';
             document.getElementById('chart-wrapper').style.display = 'none';
             document.getElementById('anomaly-alert').style.display = 'none';
             document.getElementById('stats-row').style.display = 'none';
             document.getElementById('download-btn').style.display = 'none';
 
             try {
-            const allData = [];
-            let attempted = 0;
-            for (const p of points) {
-                attempted++;
-                document.getElementById('loading-text').innerText = 'Sampling point ' + attempted + ' of ' + points.length + '...';
-                try {
-                    const res = await fetch('/api/et/point?longitude=' + p.lng + '&latitude=' + p.lat + '&start_date=' + start + '&end_date=' + end);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (Array.isArray(data) && data.length > 0) allData.push(data);
-                    }
-                } catch(e) {}
-                await new Promise(r => setTimeout(r, 200));
-            }
+                const allData = [];
+                let attempted = 0;
+                for (const p of points) {
+                    attempted++;
+                    document.getElementById('loading-text').innerText = 'Sampling point ' + attempted + ' of ' + points.length + '...';
+                    try {
+                        const res = await fetch('/api/et/point?longitude=' + p.lng + '&latitude=' + p.lat + '&start_date=' + start + '&end_date=' + end);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (Array.isArray(data) && data.length > 0) allData.push(data);
+                        }
+                    } catch(e) {}
+                    await new Promise(r => setTimeout(r, 200));
+                }
 
-            if (allData.length === 0) {
-                // Fall back to center point
-                document.getElementById('loading-text').innerText = 'Falling back to center point...';
-                try {
-                    const res = await fetch('/api/et/point?longitude=' + center.lng.toFixed(5) + '&latitude=' + center.lat.toFixed(5) + '&start_date=' + start + '&end_date=' + end);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (Array.isArray(data) && data.length > 0) allData.push(data);
-                    }
-                } catch(e) {}
-            }
-
-            if (allData.length === 0) throw new Error('No data');
+                if (allData.length === 0) {
+                    document.getElementById('loading-text').innerText = 'Falling back to center point...';
+                    try {
+                        const res = await fetch('/api/et/point?longitude=' + r2(center.lng).toFixed(2) + '&latitude=' + r2(center.lat).toFixed(2) + '&start_date=' + start + '&end_date=' + end);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (Array.isArray(data) && data.length > 0) allData.push(data);
+                        }
+                    } catch(e) {}
+                }
 
                 if (allData.length === 0) throw new Error('No data');
 
@@ -450,10 +409,10 @@ def chart():
                     return Object.assign({}, d, { et: Math.round(avgET * 100) / 100 });
                 });
 
-                document.getElementById('coords-text').innerText = 'Polygon avg (' + allData.length + ' points) — center: ' + center.lat.toFixed(4) + ', ' + center.lng.toFixed(4);
-                currentLat = center.lat.toFixed(5);
-                currentLng = center.lng.toFixed(5);
-                renderChart(mergedData, center.lat.toFixed(5), center.lng.toFixed(5), true, allData.length);
+                document.getElementById('coords-text').innerText = 'Polygon avg (' + allData.length + ' points) — center: ' + r2(center.lat).toFixed(2) + ', ' + r2(center.lng).toFixed(2);
+                currentLat = r2(center.lat).toFixed(2);
+                currentLng = r2(center.lng).toFixed(2);
+                renderChart(mergedData, currentLat, currentLng, true, allData.length);
             } catch(e) {
                 document.getElementById('loading-wrap').style.display = 'none';
                 document.getElementById('empty-state').style.display = 'flex';
@@ -517,13 +476,7 @@ def chart():
             });
 
             const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const yearColors = {
-                '2021': 'rgba(99,179,237,0.85)',
-                '2022': 'rgba(154,205,100,0.85)',
-                '2023': 'rgba(246,173,85,0.85)',
-                '2024': 'rgba(203,139,255,0.85)'
-            };
-
+            const yearColors = { '2021': 'rgba(99,179,237,0.85)', '2022': 'rgba(154,205,100,0.85)', '2023': 'rgba(246,173,85,0.85)', '2024': 'rgba(203,139,255,0.85)' };
             const yearList = Object.keys(years).sort();
             const datasets = yearList.map(function(year) {
                 return {
@@ -535,8 +488,7 @@ def chart():
                         return yearColors[year] || 'rgba(37,99,235,0.8)';
                     }),
                     borderColor: yearColors[year] || 'rgba(37,99,235,0.8)',
-                    borderWidth: 1,
-                    borderRadius: 3
+                    borderWidth: 1, borderRadius: 3
                 };
             });
 
@@ -562,17 +514,8 @@ def chart():
                         }
                     },
                     scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: { color: '#aaa' },
-                            grid: { color: 'rgba(255,255,255,0.06)' },
-                            title: { display: true, text: isPolygon ? 'ET (inches) — polygon avg' : 'ET (inches)', color: '#aaa', font: { size: 11 } }
-                        },
-                        x: {
-                            ticks: { color: '#aaa', font: { size: 10 } },
-                            grid: { color: 'rgba(255,255,255,0.06)' },
-                            title: { display: true, text: 'Month', color: '#aaa' }
-                        }
+                        y: { beginAtZero: true, ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: isPolygon ? 'ET (inches) — polygon avg' : 'ET (inches)', color: '#aaa', font: { size: 11 } } },
+                        x: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: 'Month', color: '#aaa' } }
                     }
                 }
             });
@@ -591,11 +534,8 @@ def chart():
             if (!query) return;
             const res = await fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(query) + '&format=json&limit=1');
             const data = await res.json();
-            if (data.length > 0) {
-                map.setView([parseFloat(data[0].lat), parseFloat(data[0].lon)], 10);
-            } else {
-                alert('Location not found.');
-            }
+            if (data.length > 0) { map.setView([parseFloat(data[0].lat), parseFloat(data[0].lon)], 10); }
+            else { alert('Location not found.'); }
         }
 
         async function sendChat() {

@@ -16,13 +16,11 @@ OPENET_BASE_URL = "https://openet-api.org"
 def detect_anomalies(data: list) -> list:
     from collections import defaultdict
 
-    # Group by month number (1-12)
     monthly = defaultdict(list)
     for d in data:
         month = int(d["time"][5:7])
         monthly[month].append(d["et"])
 
-    # Calculate seasonal baseline per month
     baseline = {}
     for month, values in monthly.items():
         mean = sum(values) / len(values)
@@ -40,12 +38,8 @@ def detect_anomalies(data: list) -> list:
         mean = b["mean"]
         std = b["std"]
 
-        # Z-score for anomaly detection
         z_score = (d["et"] - mean) / std if std > 0 else 0
         anomaly = abs(z_score) > 1.0
-
-        # Normalized ET — percentage of monthly baseline
-        # 100% = exactly average, 150% = 50% above average, 50% = half the average
         normalized = round((d["et"] / mean * 100), 1) if mean > 0 else 100.0
 
         result.append(
@@ -54,7 +48,7 @@ def detect_anomalies(data: list) -> list:
                 "et": d["et"],
                 "mean": round(mean, 3),
                 "z_score": round(z_score, 3),
-                "normalized": normalized,  # % of baseline
+                "normalized": normalized,
                 "anomaly": anomaly,
                 "anomaly_type": "high"
                 if z_score > 1.0
@@ -66,26 +60,25 @@ def detect_anomalies(data: list) -> list:
     return result
 
 
-def get_cache_key(longitude, latitude, start_date, end_date):
-    return f"{round(longitude, 4)}_{round(latitude, 4)}_{start_date}_{end_date}"
-
-
 @router.get("/et/point")
 def get_et_point(
-    longitude: float = -121.36322,
-    latitude: float = 38.87626,
-    start_date: str = "2021-01-01",
+    longitude: float = -77.05,
+    latitude: float = 42.66,
+    start_date: str = "2022-01-01",
     end_date: str = "2023-12-31",
 ):
     db: Session = SessionLocal()
 
+    # Round to 2 decimal places (~1km grid) for aggressive caching
+    lng = round(longitude, 2)
+    lat = round(latitude, 2)
+
     try:
-        # Check cache first
         cached = (
             db.query(ETCache)
             .filter(
-                ETCache.longitude == round(longitude, 4),
-                ETCache.latitude == round(latitude, 4),
+                ETCache.longitude == lng,
+                ETCache.latitude == lat,
                 ETCache.start_date == start_date,
                 ETCache.end_date == end_date,
             )
@@ -93,11 +86,10 @@ def get_et_point(
         )
 
         if cached:
-            print(f"CACHE HIT: {longitude}, {latitude}")
+            print(f"CACHE HIT: {lng}, {lat}")
             data = json.loads(cached.data)
             return detect_anomalies(data)
 
-        # Not in cache: fetch from OpenET API
         headers = {
             "Authorization": os.getenv("OPENET_API_KEY"),
             "Content-Type": "application/json",
@@ -105,7 +97,7 @@ def get_et_point(
         payload = {
             "date_range": [start_date, end_date],
             "interval": "monthly",
-            "geometry": [longitude, latitude],
+            "geometry": [lng, lat],
             "model": "Ensemble",
             "variable": "ET",
             "reference_et": "gridMET",
@@ -119,10 +111,9 @@ def get_et_point(
             timeout=60,
         )
 
-        # Log the query
         log = QueryLog(
-            longitude=round(longitude, 4),
-            latitude=round(latitude, 4),
+            longitude=lng,
+            latitude=lat,
             start_date=start_date,
             end_date=end_date,
             success=response.status_code == 200,
@@ -134,12 +125,11 @@ def get_et_point(
             raise HTTPException(status_code=response.status_code, detail=response.text)
 
         data = response.json()
-        print(f"API CALL: {longitude}, {latitude}")
+        print(f"API CALL: {lng}, {lat}")
 
-        # Save to cache
         cache_entry = ETCache(
-            longitude=round(longitude, 4),
-            latitude=round(latitude, 4),
+            longitude=lng,
+            latitude=lat,
             start_date=start_date,
             end_date=end_date,
             data=json.dumps(data),
