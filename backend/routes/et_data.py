@@ -37,11 +37,9 @@ def detect_anomalies(data: list) -> list:
         b = baseline[month]
         mean = b["mean"]
         std = b["std"]
-
         z_score = (d["et"] - mean) / std if std > 0 else 0
         anomaly = abs(z_score) > 1.0
         normalized = round((d["et"] / mean * 100), 1) if mean > 0 else 100.0
-
         result.append(
             {
                 "time": d["time"],
@@ -60,6 +58,28 @@ def detect_anomalies(data: list) -> list:
     return result
 
 
+@router.get("/et/cached")
+def get_cached_locations(
+    start_date: str = "2022-01-01",
+    end_date: str = "2023-12-31",
+):
+    """Return all cached coordinates for a given date range."""
+    db: Session = SessionLocal()
+    try:
+        cached = (
+            db.query(ETCache.longitude, ETCache.latitude)
+            .filter(
+                ETCache.start_date == start_date,
+                ETCache.end_date == end_date,
+            )
+            .distinct()
+            .all()
+        )
+        return [{"longitude": c.longitude, "latitude": c.latitude} for c in cached]
+    finally:
+        db.close()
+
+
 @router.get("/et/point")
 def get_et_point(
     longitude: float = -77.05,
@@ -69,7 +89,6 @@ def get_et_point(
 ):
     db: Session = SessionLocal()
 
-    # Round to 2 decimal places (~1km grid) for aggressive caching
     lng = round(longitude, 2)
     lat = round(latitude, 2)
 

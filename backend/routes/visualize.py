@@ -47,6 +47,11 @@ def chart():
         .stat-card .lbl { font-size: 10px; color: rgba(255,255,255,0.5); margin-top: 2px; }
         .stat-card.anomaly .val { color: #ef4444; }
         .stat-card.anomaly { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.05); }
+        .annual-row { display: flex; gap: 8px; }
+        .annual-card { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px 8px; text-align: center; }
+        .annual-card .year-label { font-size: 10px; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+        .annual-card .year-val { font-size: 20px; font-weight: 700; }
+        .annual-card .year-unit { font-size: 9px; color: rgba(255,255,255,0.4); margin-top: 2px; }
         .coords { font-size: 11px; color: rgba(255,255,255,0.45); display: flex; align-items: center; gap: 6px; }
         .coords-dot { width: 6px; height: 6px; border-radius: 50%; background: #4CAF50; flex-shrink: 0; }
         .coords-dot.anomaly { background: #ef4444; }
@@ -69,6 +74,7 @@ def chart():
         .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 8px; opacity: 0.4; }
         .empty-state .icon { font-size: 32px; }
         .empty-state p { font-size: 12px; text-align: center; line-height: 1.5; }
+        .section-label { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: -6px; }
     </style>
 </head>
 <body>
@@ -119,7 +125,7 @@ def chart():
         </div>
         <div class="side-panel">
             <div class="side-panel-header">
-                <h2>Monthly ET Analysis</h2>
+                <h2>ET Analysis</h2>
             </div>
             <div class="side-panel-body">
                 <div class="coords" id="coords">
@@ -127,6 +133,7 @@ def chart():
                     <span id="coords-text">Click or draw a polygon on the map</span>
                 </div>
 
+                <!-- Monthly stats -->
                 <div class="stats-row" id="stats-row" style="display:none;">
                     <div class="stat-card">
                         <div class="val" id="stat-total">—</div>
@@ -142,6 +149,12 @@ def chart():
                     </div>
                 </div>
 
+                <!-- Annual ET summary -->
+                <div id="annual-section" style="display:none;">
+                    <div class="section-label">Annual ET</div>
+                    <div class="annual-row" id="annual-row"></div>
+                </div>
+
                 <div class="legend">
                     <div class="legend-item"><div class="legend-dot" style="background:rgba(37,99,235,0.8);"></div>Normal</div>
                     <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>High anomaly</div>
@@ -152,7 +165,7 @@ def chart():
 
                 <div class="empty-state" id="empty-state">
                     <div class="icon">🍇</div>
-                    <p>Click anywhere or draw a polygon on the map to load ET data</p>
+                    <p>Click a green dot or draw a polygon to load ET data</p>
                 </div>
                 <div class="loading-wrap" id="loading-wrap" style="display:none;">
                     <div class="spinner"></div>
@@ -190,7 +203,6 @@ def chart():
         let ndviVisible = false;
         let cdlVisible = false;
 
-        // Round to 2 decimal places (~1km) for cache efficiency
         function r2(n) { return Math.round(parseFloat(n) * 100) / 100; }
 
         const map = L.map('map').setView([42.66, -77.05], 10);
@@ -203,6 +215,24 @@ def chart():
         });
         satellite.addTo(map);
         labels.addTo(map);
+
+        // Show cached locations as green dots
+        async function loadCachedMarkers() {
+            const start = document.getElementById('start').value;
+            const end = document.getElementById('end').value;
+            try {
+                const res = await fetch('/api/et/cached?start_date=' + start + '&end_date=' + end);
+                const locations = await res.json();
+                locations.forEach(function(loc) {
+                    L.circleMarker([loc.latitude, loc.longitude], {
+                        radius: 8, color: '#4ade80', fillColor: '#4ade80',
+                        fillOpacity: 0.7, weight: 2
+                    }).addTo(map).bindTooltip('Cached ET data — click to load');
+                });
+                document.getElementById('heatmap-status').innerText = locations.length + ' cached locations ready — click green dots';
+            } catch(e) {}
+        }
+        setTimeout(loadCachedMarkers, 500);
 
         const ndviLayer = L.tileLayer(
             'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_L3_NDVI_Monthly/default/2023-07-01/GoogleMapsCompatible_Level7/{z}/{y}/{x}.jpg',
@@ -262,22 +292,9 @@ def chart():
             const center = bounds.getCenter();
             currentLat = r2(center.lat).toFixed(2);
             currentLng = r2(center.lng).toFixed(2);
-
-            const north = bounds.getNorth(), south = bounds.getSouth();
-            const east = bounds.getEast(), west = bounds.getWest();
-            // Use only center point to protect API quota
-            const samplePoints = [{ lat: r2(center.lat).toFixed(2), lng: r2(center.lng).toFixed(2) }];
-
-            // Deduplicate sample points
-            const seen = new Set();
-            const uniquePoints = samplePoints.filter(function(p) {
-                const key = p.lat + ',' + p.lng;
-                if (seen.has(key)) return false;
-                seen.add(key); return true;
-            });
-
-            document.getElementById('coords-text').innerText = 'Polygon — sampling ' + uniquePoints.length + ' points...';
-            loadPolygonChart(uniquePoints, center);
+            const samplePoints = [{ lat: currentLat, lng: currentLng }];
+            document.getElementById('coords-text').innerText = 'Polygon center: ' + currentLat + ', ' + currentLng;
+            loadPolygonChart(samplePoints, center);
         });
 
         map.on('click', function(e) {
@@ -287,7 +304,48 @@ def chart():
         });
 
         async function refreshHeatmap() {
-            await loadHeatmap(map.getBounds());
+            document.getElementById('heatmap-status').innerText = 'Loading heatmap from cache...';
+            const start = document.getElementById('start').value;
+            const end = document.getElementById('end').value;
+
+            try {
+                const res = await fetch('/api/et/cached?start_date=' + start + '&end_date=' + end);
+                const locations = await res.json();
+
+                if (locations.length === 0) {
+                    document.getElementById('heatmap-status').innerText = 'No cached data available.';
+                    return;
+                }
+
+                // Fetch ET totals for each cached location
+                const results = [];
+                let loaded = 0;
+                for (const loc of locations) {
+                    try {
+                        const r = await fetch('/api/et/point?longitude=' + loc.longitude + '&latitude=' + loc.latitude + '&start_date=' + start + '&end_date=' + end);
+                        if (r.ok) {
+                            const data = await r.json();
+                            if (Array.isArray(data)) {
+                                const totalET = data.reduce(function(sum, d) { return sum + d.et; }, 0);
+                                results.push([loc.latitude, loc.longitude, totalET]);
+                                loaded++;
+                                document.getElementById('heatmap-status').innerText = 'Loading heatmap... ' + loaded + ' / ' + locations.length;
+                            }
+                        }
+                    } catch(e) {}
+                }
+
+                if (heatLayer) map.removeLayer(heatLayer);
+                if (results.length > 0) {
+                    heatLayer = L.heatLayer(results, {
+                        radius: 80, blur: 60, maxZoom: 12,
+                        gradient: { 0.0: '#000080', 0.2: '#0000ff', 0.4: '#00ffff', 0.6: '#00ff00', 0.8: '#ffff00', 1.0: '#ff0000' }
+                    }).addTo(map);
+                    document.getElementById('heatmap-status').innerText = 'Heatmap loaded from ' + results.length + ' cached locations — no quota used!';
+                }
+            } catch(e) {
+                document.getElementById('heatmap-status').innerText = 'Error loading heatmap.';
+            }
         }
 
         async function loadHeatmap(bounds) {
@@ -325,9 +383,9 @@ def chart():
                     radius: 80, blur: 60, maxZoom: 12,
                     gradient: { 0.0: '#000080', 0.2: '#0000ff', 0.4: '#00ffff', 0.6: '#00ff00', 0.8: '#ffff00', 1.0: '#ff0000' }
                 }).addTo(map);
-                document.getElementById('heatmap-status').innerText = 'Heatmap loaded — ' + results.length + ' points (cached for next time)';
+                document.getElementById('heatmap-status').innerText = 'Heatmap loaded — ' + results.length + ' points';
             } else {
-                document.getElementById('heatmap-status').innerText = 'No data available for this area.';
+                document.getElementById('heatmap-status').innerText = 'No data available — quota may be exhausted.';
             }
         }
 
@@ -341,6 +399,7 @@ def chart():
             document.getElementById('chart-wrapper').style.display = 'none';
             document.getElementById('anomaly-alert').style.display = 'none';
             document.getElementById('stats-row').style.display = 'none';
+            document.getElementById('annual-section').style.display = 'none';
             document.getElementById('download-btn').style.display = 'none';
             try {
                 const res = await fetch('/api/et/point?longitude=' + lng + '&latitude=' + lat + '&start_date=' + start + '&end_date=' + end);
@@ -350,7 +409,7 @@ def chart():
             } catch(e) {
                 document.getElementById('loading-wrap').style.display = 'none';
                 document.getElementById('empty-state').style.display = 'flex';
-                document.getElementById('empty-state').querySelector('p').innerText = 'No data for this location. Try clicking on farmland or vineyard areas.';
+                document.getElementById('empty-state').querySelector('p').innerText = 'No data for this location. Try clicking a green dot.';
             }
         }
 
@@ -359,32 +418,18 @@ def chart():
             const end = document.getElementById('end').value;
             document.getElementById('empty-state').style.display = 'none';
             document.getElementById('loading-wrap').style.display = 'flex';
-            document.getElementById('loading-text').innerText = 'Sampling ' + points.length + ' points...';
+            document.getElementById('loading-text').innerText = 'Loading polygon data...';
             document.getElementById('chart-wrapper').style.display = 'none';
             document.getElementById('anomaly-alert').style.display = 'none';
             document.getElementById('stats-row').style.display = 'none';
+            document.getElementById('annual-section').style.display = 'none';
             document.getElementById('download-btn').style.display = 'none';
 
             try {
                 const allData = [];
-                let attempted = 0;
                 for (const p of points) {
-                    attempted++;
-                    document.getElementById('loading-text').innerText = 'Sampling point ' + attempted + ' of ' + points.length + '...';
                     try {
                         const res = await fetch('/api/et/point?longitude=' + p.lng + '&latitude=' + p.lat + '&start_date=' + start + '&end_date=' + end);
-                        if (res.ok) {
-                            const data = await res.json();
-                            if (Array.isArray(data) && data.length > 0) allData.push(data);
-                        }
-                    } catch(e) {}
-                    await new Promise(r => setTimeout(r, 200));
-                }
-
-                if (allData.length === 0) {
-                    document.getElementById('loading-text').innerText = 'Falling back to center point...';
-                    try {
-                        const res = await fetch('/api/et/point?longitude=' + r2(center.lng).toFixed(2) + '&latitude=' + r2(center.lat).toFixed(2) + '&start_date=' + start + '&end_date=' + end);
                         if (res.ok) {
                             const data = await res.json();
                             if (Array.isArray(data) && data.length > 0) allData.push(data);
@@ -402,21 +447,19 @@ def chart():
                     });
                 });
 
-                const firstData = allData[0];
-                const mergedData = firstData.map(function(d) {
+                const mergedData = allData[0].map(function(d) {
                     const vals = timeMap[d.time] || [d.et];
                     const avgET = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
                     return Object.assign({}, d, { et: Math.round(avgET * 100) / 100 });
                 });
 
-                document.getElementById('coords-text').innerText = 'Polygon avg (' + allData.length + ' points) — center: ' + r2(center.lat).toFixed(2) + ', ' + r2(center.lng).toFixed(2);
                 currentLat = r2(center.lat).toFixed(2);
                 currentLng = r2(center.lng).toFixed(2);
                 renderChart(mergedData, currentLat, currentLng, true, allData.length);
             } catch(e) {
                 document.getElementById('loading-wrap').style.display = 'none';
                 document.getElementById('empty-state').style.display = 'flex';
-                document.getElementById('empty-state').querySelector('p').innerText = 'Error sampling polygon. Try a smaller area.';
+                document.getElementById('empty-state').querySelector('p').innerText = 'No data for this area. Try clicking a green dot instead.';
             }
         }
 
@@ -424,6 +467,7 @@ def chart():
             document.getElementById('loading-wrap').style.display = 'none';
             document.getElementById('chart-wrapper').style.display = 'block';
             document.getElementById('stats-row').style.display = 'grid';
+            document.getElementById('annual-section').style.display = 'block';
             document.getElementById('download-btn').style.display = 'block';
 
             window.currentETData = data;
@@ -445,7 +489,7 @@ def chart():
                 const alertBox = document.getElementById('anomaly-alert');
                 const highAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'high'; });
                 const lowAnomalies = anomalies.filter(function(d) { return d.anomaly_type === 'low'; });
-                const prefix = isPolygon ? 'Polygon anomaly (avg of ' + numPoints + ' points): ' : 'Anomaly detected: ';
+                const prefix = isPolygon ? 'Polygon anomaly: ' : 'Anomaly detected: ';
                 anomalyMsg = prefix;
                 if (highAnomalies.length > 0) anomalyMsg += 'unusually high ET in ' + highAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '. ';
                 if (lowAnomalies.length > 0) anomalyMsg += 'unusually low ET in ' + lowAnomalies.map(function(d) { return d.time.slice(0,7) + ' (' + d.normalized + '%)'; }).join(', ') + '.';
@@ -466,8 +510,7 @@ def chart():
                 marker.bindPopup('<b style="color:#4CAF50;">✓ Normal ET levels</b><br><small>Lat: ' + lat + ', Lng: ' + lng + '</small>');
             }
 
-            if (chart) chart.destroy();
-
+            // Group by year
             const years = {};
             data.forEach(function(d) {
                 const year = d.time.slice(0, 4);
@@ -475,9 +518,25 @@ def chart():
                 years[year].push({ et: d.et, anomaly: d.anomaly, anomaly_type: d.anomaly_type, normalized: d.normalized });
             });
 
-            const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const yearColors = { '2021': 'rgba(99,179,237,0.85)', '2022': 'rgba(154,205,100,0.85)', '2023': 'rgba(246,173,85,0.85)', '2024': 'rgba(203,139,255,0.85)' };
             const yearList = Object.keys(years).sort();
+
+            // Annual ET summary cards
+            const annualRow = document.getElementById('annual-row');
+            annualRow.innerHTML = yearList.map(function(year) {
+                const annualTotal = years[year].reduce(function(sum, d) { return sum + d.et; }, 0).toFixed(1);
+                const color = yearColors[year] || '#90caf9';
+                const hasAnom = years[year].some(function(d) { return d.anomaly; });
+                return '<div class="annual-card" style="border-color:' + (hasAnom ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.08)') + '">' +
+                    '<div class="year-label">' + year + '</div>' +
+                    '<div class="year-val" style="color:' + color + '">' + annualTotal + '"</div>' +
+                    '<div class="year-unit">in/year</div>' +
+                    '</div>';
+            }).join('');
+
+            if (chart) chart.destroy();
+
+            const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const datasets = yearList.map(function(year) {
                 return {
                     label: year,
@@ -514,7 +573,7 @@ def chart():
                         }
                     },
                     scales: {
-                        y: { beginAtZero: true, ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: isPolygon ? 'ET (inches) — polygon avg' : 'ET (inches)', color: '#aaa', font: { size: 11 } } },
+                        y: { beginAtZero: true, ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: 'ET (inches)', color: '#aaa', font: { size: 11 } } },
                         x: { ticks: { color: '#aaa', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: 'Month', color: '#aaa' } }
                     }
                 }
