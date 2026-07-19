@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
@@ -6,12 +8,13 @@ router = APIRouter()
 
 @router.get("/chart", response_class=HTMLResponse)
 def chart():
-    return """
+    html = """
 <!DOCTYPE html>
 <html>
 <head>
     <title>OpenET Water Use Platform</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
@@ -112,6 +115,8 @@ def chart():
             <button class="btn" id="cdl-btn" onclick="toggleCDL()" style="background:rgba(251,191,36,0.2);color:#fbbf24;border:1px solid rgba(251,191,36,0.5);">Crop Type Off</button>
             <button class="btn" id="usdm-btn" onclick="toggleUSDM()" style="background:rgba(248,113,113,0.2);color:#f87171;border:1px solid rgba(248,113,113,0.5);">Drought Off</button>
             <button class="btn" id="compare-btn" onclick="toggleCompareMode()" style="background:rgba(96,165,250,0.2);color:#60a5fa;border:1px solid rgba(96,165,250,0.5);">Compare Off</button>
+            <button class="btn" id="history-btn" onclick="toggleHistoryPanel()" style="background:rgba(167,139,250,0.2);color:#a78bfa;border:1px solid rgba(167,139,250,0.5);">History</button>
+            <div id="auth-section" style="display:flex; align-items:center; gap:8px;"></div>
         </div>
     </header>
 
@@ -156,7 +161,11 @@ def chart():
                 <select class="compare-select" id="saved-fields-select" onchange="onSavedFieldSelected()">
                     <option value="">Load saved field...</option>
                 </select>
+                <select class="compare-select" id="comparison-sets-select" onchange="onComparisonSetSelected()">
+                    <option value="">Load saved set...</option>
+                </select>
                 <button class="compare-run-btn" onclick="runComparison()">Run Comparison</button>
+                <button class="compare-run-btn" onclick="saveComparisonSet()" style="background:#166534;margin-top:6px;">Save This Set</button>
             </div>
         </div>
         <div class="side-panel">
@@ -230,6 +239,40 @@ def chart():
         </div>
     </div>
 
+    <div class="compare-modal-backdrop" id="auth-modal">
+        <div class="compare-modal-box" style="max-width:360px;">
+            <div class="compare-modal-header">
+                <h2>Sign In</h2>
+                <button class="compare-modal-close" onclick="closeAuthModal()">×</button>
+            </div>
+            <div style="display:flex; gap:16px; margin-bottom:16px; font-size:13px;">
+                <span id="auth-tab-login" onclick="setAuthMode('login')" style="cursor:pointer; font-weight:600; opacity:1;">Log In</span>
+                <span id="auth-tab-signup" onclick="setAuthMode('signup')" style="cursor:pointer; font-weight:600; opacity:0.5;">Sign Up</span>
+            </div>
+            <div id="auth-error" style="display:none; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-size:12px; padding:8px 10px; border-radius:6px; margin-bottom:12px;"></div>
+            <div id="auth-name-field" style="display:none; margin-bottom:10px;">
+                <input type="text" id="auth-name" placeholder="Name (optional)" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.08); color:white; font-size:12px;"/>
+            </div>
+            <div style="margin-bottom:10px;">
+                <input type="email" id="auth-email" placeholder="Email" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.08); color:white; font-size:12px;"/>
+            </div>
+            <div style="margin-bottom:14px;">
+                <input type="password" id="auth-password" placeholder="Password" onkeydown="if(event.key==='Enter') submitAuthForm()" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.08); color:white; font-size:12px;"/>
+            </div>
+            <button id="auth-submit-btn" onclick="submitAuthForm()" style="width:100%; padding:10px; background:#1a237e; color:white; border:none; border-radius:6px; font-size:13px; cursor:pointer; font-weight:600;">Log In</button>
+            <div style="display:flex; align-items:center; gap:10px; margin:16px 0; color:rgba(255,255,255,0.4); font-size:11px;">
+                <div style="flex:1; height:1px; background:rgba(255,255,255,0.1);"></div>or<div style="flex:1; height:1px; background:rgba(255,255,255,0.1);"></div>
+            </div>
+            <div id="google-signin-btn" style="display:flex; justify-content:center;"></div>
+        </div>
+    </div>
+
+    <div class="compare-panel" id="history-panel" style="display:none; top:70px;">
+        <div class="compare-panel-title">Search History</div>
+        <div id="history-items" style="max-height:240px; overflow-y:auto;"></div>
+        <button class="compare-run-btn" onclick="clearHistoryList()" style="background:#7f1d1d; margin-top:8px;">Clear History</button>
+    </div>
+
     <div class="compare-modal-backdrop" id="compare-modal">
         <div class="compare-modal-box">
             <div class="compare-modal-header">
@@ -252,6 +295,15 @@ def chart():
         let compareMode = false;
         let compareList = [];
         let compareChart;
+
+        // ---------- Auth state ----------
+        const GOOGLE_CLIENT_ID = '__GOOGLE_CLIENT_ID__';
+        let authToken = localStorage.getItem('openet_token');
+        let currentUser = null;
+
+        function authHeaders() {
+            return authToken ? { 'Authorization': 'Bearer ' + authToken } : {};
+        }
 
         function r2(n) { return Math.round(parseFloat(n) * 100) / 100; }
 
@@ -373,6 +425,7 @@ def chart():
                 btn.innerText = 'Compare On'; btn.style.background = 'rgba(96,165,250,0.6)';
                 panel.style.display = 'block';
                 loadSavedFieldsDropdown();
+                loadComparisonSetsDropdown();
             } else {
                 btn.innerText = 'Compare Off'; btn.style.background = 'rgba(96,165,250,0.2)';
                 panel.style.display = 'none';
@@ -382,8 +435,10 @@ def chart():
         async function loadSavedFieldsDropdown() {
             const select = document.getElementById('saved-fields-select');
             select.innerHTML = '<option value="">Load saved field...</option>';
+            if (!authToken) return;
             try {
-                const res = await fetch('/api/fields');
+                const res = await fetch('/api/fields', { headers: authHeaders() });
+                if (!res.ok) return;
                 const fields = await res.json();
                 fields.forEach(function(f) {
                     const opt = document.createElement('option');
@@ -413,17 +468,63 @@ def chart():
         }
 
         async function saveCompareItem(index) {
+            if (!authToken) { alert('Sign in to save fields.'); openAuthModal(); return; }
             const item = compareList[index];
             try {
                 await fetch('/api/fields', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
                     body: JSON.stringify({ name: item.label, longitude: item.longitude, latitude: item.latitude })
                 });
                 loadSavedFieldsDropdown();
             } catch(e) {
                 alert('Failed to save field.');
             }
+        }
+
+        async function saveComparisonSet() {
+            if (!authToken) { alert('Sign in to save comparison sets.'); openAuthModal(); return; }
+            if (compareList.length === 0) { alert('Add at least one field first.'); return; }
+            const name = prompt('Name this comparison set:', 'My Comparison ' + new Date().toLocaleDateString());
+            if (!name) return;
+            try {
+                await fetch('/api/comparison-sets', {
+                    method: 'POST',
+                    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+                    body: JSON.stringify({
+                        name: name,
+                        fields: compareList.map(function(item) { return { label: item.label, longitude: item.longitude, latitude: item.latitude }; })
+                    })
+                });
+                loadComparisonSetsDropdown();
+            } catch(e) {
+                alert('Failed to save comparison set.');
+            }
+        }
+
+        async function loadComparisonSetsDropdown() {
+            const select = document.getElementById('comparison-sets-select');
+            select.innerHTML = '<option value="">Load saved set...</option>';
+            if (!authToken) return;
+            try {
+                const res = await fetch('/api/comparison-sets', { headers: authHeaders() });
+                if (!res.ok) return;
+                const sets = await res.json();
+                sets.forEach(function(s) {
+                    const opt = document.createElement('option');
+                    opt.value = JSON.stringify(s.fields);
+                    opt.innerText = s.name;
+                    select.appendChild(opt);
+                });
+            } catch(e) {}
+        }
+
+        function onComparisonSetSelected() {
+            const select = document.getElementById('comparison-sets-select');
+            if (!select.value) return;
+            const fields = JSON.parse(select.value);
+            fields.forEach(function(f) { addToCompareList(f.label, f.longitude, f.latitude); });
+            select.value = '';
         }
 
         function renderCompareItems() {
@@ -676,7 +777,7 @@ def chart():
             document.getElementById('annual-section').style.display = 'none';
             document.getElementById('download-btn').style.display = 'none';
             try {
-                const res = await fetch('/api/et/point?longitude=' + lng + '&latitude=' + lat + '&start_date=' + start + '&end_date=' + end);
+                const res = await fetch('/api/et/point?longitude=' + lng + '&latitude=' + lat + '&start_date=' + start + '&end_date=' + end, { headers: authHeaders() });
                 const data = await res.json();
                 if (!Array.isArray(data)) throw new Error('Invalid response');
                 renderChart(data, lat, lng);
@@ -703,7 +804,7 @@ def chart():
                 const allData = [];
                 for (const p of points) {
                     try {
-                        const res = await fetch('/api/et/point?longitude=' + p.lng + '&latitude=' + p.lat + '&start_date=' + start + '&end_date=' + end);
+                        const res = await fetch('/api/et/point?longitude=' + p.lng + '&latitude=' + p.lat + '&start_date=' + start + '&end_date=' + end, { headers: authHeaders() });
                         if (res.ok) {
                             const data = await res.json();
                             if (Array.isArray(data) && data.length > 0) allData.push(data);
@@ -871,6 +972,172 @@ def chart():
             else { alert('Location not found.'); }
         }
 
+        // ---------- Auth UI ----------
+
+        function renderAuthUI() {
+            const container = document.getElementById('auth-section');
+            if (currentUser) {
+                container.innerHTML =
+                    '<span style="font-size:11px;opacity:0.85;">' + (currentUser.name || currentUser.email) + '</span>' +
+                    '<button class="btn" onclick="logout()" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);">Log Out</button>';
+            } else {
+                container.innerHTML = '<button class="btn" onclick="openAuthModal()" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);">Sign In</button>';
+            }
+        }
+
+        function logout() {
+            authToken = null;
+            currentUser = null;
+            localStorage.removeItem('openet_token');
+            renderAuthUI();
+        }
+
+        function openAuthModal() {
+            document.getElementById('auth-modal').style.display = 'flex';
+        }
+
+        function closeAuthModal() {
+            document.getElementById('auth-modal').style.display = 'none';
+            document.getElementById('auth-error').style.display = 'none';
+        }
+
+        let authMode = 'login';
+        function setAuthMode(mode) {
+            authMode = mode;
+            document.getElementById('auth-name-field').style.display = mode === 'signup' ? 'block' : 'none';
+            document.getElementById('auth-submit-btn').innerText = mode === 'signup' ? 'Sign Up' : 'Log In';
+            document.getElementById('auth-tab-login').style.opacity = mode === 'login' ? '1' : '0.5';
+            document.getElementById('auth-tab-signup').style.opacity = mode === 'signup' ? '1' : '0.5';
+        }
+
+        async function submitAuthForm() {
+            const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const name = document.getElementById('auth-name').value.trim();
+            const errorBox = document.getElementById('auth-error');
+            errorBox.style.display = 'none';
+            if (!email || !password) return;
+
+            const endpoint = authMode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
+            const body = authMode === 'signup' ? { email: email, password: password, name: name } : { email: email, password: password };
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    errorBox.innerText = data.detail || 'Something went wrong.';
+                    errorBox.style.display = 'block';
+                    return;
+                }
+                authToken = data.token;
+                currentUser = data.user;
+                localStorage.setItem('openet_token', authToken);
+                closeAuthModal();
+                renderAuthUI();
+                loadSavedFieldsDropdown();
+                loadComparisonSetsDropdown();
+            } catch(e) {
+                errorBox.innerText = 'Network error — try again.';
+                errorBox.style.display = 'block';
+            }
+        }
+
+        async function handleGoogleCredential(response) {
+            try {
+                const res = await fetch('/api/auth/google', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id_token: response.credential })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(data.detail || 'Google sign-in failed.');
+                    return;
+                }
+                authToken = data.token;
+                currentUser = data.user;
+                localStorage.setItem('openet_token', authToken);
+                closeAuthModal();
+                renderAuthUI();
+                loadSavedFieldsDropdown();
+                loadComparisonSetsDropdown();
+            } catch(e) {
+                alert('Google sign-in failed — try again.');
+            }
+        }
+
+        async function checkAuth() {
+            if (!authToken) { renderAuthUI(); return; }
+            try {
+                const res = await fetch('/api/auth/me', { headers: authHeaders() });
+                if (res.ok) {
+                    currentUser = await res.json();
+                } else {
+                    authToken = null;
+                    localStorage.removeItem('openet_token');
+                }
+            } catch(e) {}
+            renderAuthUI();
+        }
+
+        window.addEventListener('load', function() {
+            checkAuth();
+            if (window.google && GOOGLE_CLIENT_ID) {
+                google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential });
+                google.accounts.id.renderButton(document.getElementById('google-signin-btn'), { theme: 'outline', size: 'medium', width: 240 });
+            }
+        });
+
+        // ---------- History panel ----------
+
+        let historyVisible = false;
+        function toggleHistoryPanel() {
+            if (!authToken) { alert('Sign in to view search history.'); openAuthModal(); return; }
+            historyVisible = !historyVisible;
+            document.getElementById('history-panel').style.display = historyVisible ? 'block' : 'none';
+            if (historyVisible) loadHistory();
+        }
+
+        async function loadHistory() {
+            const container = document.getElementById('history-items');
+            container.innerHTML = '<div style="font-size:11px;opacity:0.5;">Loading...</div>';
+            try {
+                const res = await fetch('/api/history', { headers: authHeaders() });
+                if (!res.ok) { container.innerHTML = '<div style="font-size:11px;opacity:0.5;">Could not load history.</div>'; return; }
+                const entries = await res.json();
+                if (entries.length === 0) {
+                    container.innerHTML = '<div style="font-size:11px;opacity:0.5;">No searches yet — click any field on the map.</div>';
+                    return;
+                }
+                container.innerHTML = entries.map(function(h) {
+                    const dateLabel = new Date(h.created_at).toLocaleDateString();
+                    return '<div class="compare-item" style="cursor:pointer;" onclick="loadFromHistory(' + h.longitude + ',' + h.latitude + ',\\'' + h.start_date + '\\',\\'' + h.end_date + '\\')">' +
+                        '<span class="name">' + h.latitude.toFixed(2) + ', ' + h.longitude.toFixed(2) + '</span>' +
+                        '<span style="font-size:9px;opacity:0.5;">' + dateLabel + '</span>' +
+                        '</div>';
+                }).join('');
+            } catch(e) {
+                container.innerHTML = '<div style="font-size:11px;opacity:0.5;">Could not load history.</div>';
+            }
+        }
+
+        function loadFromHistory(lng, lat, start, end) {
+            document.getElementById('start').value = start;
+            document.getElementById('end').value = end;
+            loadChart(lng, lat);
+        }
+
+        async function clearHistoryList() {
+            if (!confirm('Clear all search history?')) return;
+            try {
+                await fetch('/api/history', { method: 'DELETE', headers: authHeaders() });
+                loadHistory();
+            } catch(e) {}
+        }
+
         // AI Assistant (free tier): no external API call at all. Every
         // answer is computed locally from window.currentETData, which is
         // already loaded whenever a field's chart is showing. Zero cost,
@@ -958,3 +1225,5 @@ def chart():
 </body>
 </html>
 """
+    html = html.replace("__GOOGLE_CLIENT_ID__", os.getenv("GOOGLE_CLIENT_ID", ""))
+    return html

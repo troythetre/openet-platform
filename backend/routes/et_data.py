@@ -4,8 +4,9 @@ from collections import defaultdict
 from datetime import datetime
 
 import requests
-from database import ETCache, QueryLog, SavedLocation, SessionLocal
-from fastapi import APIRouter, HTTPException
+from auth_utils import get_current_user, get_current_user_optional
+from database import ComparisonSet, ETCache, QueryLog, SavedLocation, SearchHistory, SessionLocal, User
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -62,10 +63,7 @@ def detect_anomalies(data: list) -> list:
 def fetch_et_series(
     lng: float, lat: float, start_date: str, end_date: str, db: Session
 ) -> list:
-    """Fetch raw ET time series for a point, using cache if available.
-    Shared by /et/point and /et/compare so both hit the same cache and
-    the same OpenET quota accounting.
-    """
+    """Fetch raw ET time series for a point, using cache if available."""
     lng = round(lng, 2)
     lat = round(lat, 2)
 
@@ -134,6 +132,30 @@ def fetch_et_series(
     return data
 
 
+def _log_history_if_authenticated(
+    request: Request, lng: float, lat: float, start_date: str, end_date: str, db: Session
+):
+    """Best-effort history logging — silently skips if not logged in or
+    if anything goes wrong, since this should never block the actual
+    ET lookup from succeeding.
+    """
+    try:
+        user = get_current_user_optional(request)
+        if not user:
+            return
+        entry = SearchHistory(
+            user_id=user.id,
+            longitude=lng,
+            latitude=lat,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        db.add(entry)
+        db.commit()
+    except Exception:
+        pass
+
+
 @router.get("/et/cached")
 def get_cached_locations(
     start_date: str = "2022-01-01",
@@ -158,6 +180,7 @@ def get_cached_locations(
 
 @router.get("/et/point")
 def get_et_point(
+    request: Request,
     longitude: float = -77.05,
     latitude: float = 42.66,
     start_date: str = "2022-01-01",
@@ -166,6 +189,7 @@ def get_et_point(
     db: Session = SessionLocal()
     try:
         data = fetch_et_series(longitude, latitude, start_date, end_date, db)
+        _log_history_if_authenticated(request, longitude, latitude, start_date, end_date, db)
         return detect_anomalies(data)
     finally:
         db.close()
@@ -188,10 +212,6 @@ class CompareRequest(BaseModel):
 
 @router.post("/et/compare")
 def compare_fields(request: CompareRequest):
-    """Fetch ET data for multiple fields at once for side-by-side comparison.
-    Each field is fetched/cached independently via fetch_et_series, so
-    fields already viewed individually will be cache hits here too.
-    """
     if len(request.points) < 1:
         raise HTTPException(status_code=400, detail="At least one point is required")
     if len(request.points) > 8:
@@ -203,29 +223,19 @@ def compare_fields(request: CompareRequest):
         for point in request.points:
             try:
                 raw = fetch_et_series(
-                    point.longitude,
-                    point.latitude,
-                    request.start_date,
-                    request.end_date,
-                    db,
+                    point.longitude, point.latitude, request.start_date, request.end_date, db
                 )
                 analyzed = detect_anomalies(raw)
                 total = round(sum(d["et"] for d in analyzed), 2)
                 avg = round(total / len(analyzed), 2) if analyzed else 0
                 anomaly_count = sum(1 for d in analyzed if d["anomaly"])
 
-                # Average ET per calendar month across all years in range,
-                # for a clean "typical year" comparison line
                 monthly_avg = defaultdict(list)
                 for d in analyzed:
                     month = int(d["time"][5:7])
                     monthly_avg[month].append(d["et"])
                 monthly_series = [
-                    round(
-                        sum(monthly_avg.get(m, [0]))
-                        / max(len(monthly_avg.get(m, [1])), 1),
-                        2,
-                    )
+                    round(sum(monthly_avg.get(m, [0])) / max(len(monthly_avg.get(m, [1])), 1), 2)
                     for m in range(1, 13)
                 ]
 
@@ -256,7 +266,7 @@ def compare_fields(request: CompareRequest):
         db.close()
 
 
-# ---------- Saved fields ----------
+# ---------- Saved fields (requires login) ----------
 
 
 class SaveFieldRequest(BaseModel):
@@ -266,17 +276,17 @@ class SaveFieldRequest(BaseModel):
 
 
 @router.get("/fields")
-def list_fields():
+def list_fields(user: User = Depends(get_current_user)):
     db: Session = SessionLocal()
     try:
-        fields = db.query(SavedLocation).order_by(SavedLocation.created_at.desc()).all()
+        fields = (
+            db.query(SavedLocation)
+            .filter(SavedLocation.user_id == user.id)
+            .order_by(SavedLocation.created_at.desc())
+            .all()
+        )
         return [
-            {
-                "id": f.id,
-                "name": f.name,
-                "longitude": f.longitude,
-                "latitude": f.latitude,
-            }
+            {"id": f.id, "name": f.name, "longitude": f.longitude, "latitude": f.latitude}
             for f in fields
         ]
     finally:
@@ -284,10 +294,11 @@ def list_fields():
 
 
 @router.post("/fields")
-def save_field(request: SaveFieldRequest):
+def save_field(request: SaveFieldRequest, user: User = Depends(get_current_user)):
     db: Session = SessionLocal()
     try:
         field = SavedLocation(
+            user_id=user.id,
             name=request.name,
             longitude=request.longitude,
             latitude=request.latitude,
@@ -295,25 +306,130 @@ def save_field(request: SaveFieldRequest):
         db.add(field)
         db.commit()
         db.refresh(field)
-        return {
-            "id": field.id,
-            "name": field.name,
-            "longitude": field.longitude,
-            "latitude": field.latitude,
-        }
+        return {"id": field.id, "name": field.name, "longitude": field.longitude, "latitude": field.latitude}
     finally:
         db.close()
 
 
 @router.delete("/fields/{field_id}")
-def delete_field(field_id: int):
+def delete_field(field_id: int, user: User = Depends(get_current_user)):
     db: Session = SessionLocal()
     try:
-        field = db.query(SavedLocation).filter(SavedLocation.id == field_id).first()
+        field = (
+            db.query(SavedLocation)
+            .filter(SavedLocation.id == field_id, SavedLocation.user_id == user.id)
+            .first()
+        )
         if not field:
             raise HTTPException(status_code=404, detail="Field not found")
         db.delete(field)
         db.commit()
         return {"deleted": True, "id": field_id}
+    finally:
+        db.close()
+
+
+# ---------- Search history (requires login) ----------
+
+
+@router.get("/history")
+def list_history(user: User = Depends(get_current_user), limit: int = 50):
+    db: Session = SessionLocal()
+    try:
+        entries = (
+            db.query(SearchHistory)
+            .filter(SearchHistory.user_id == user.id)
+            .order_by(SearchHistory.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": h.id,
+                "longitude": h.longitude,
+                "latitude": h.latitude,
+                "start_date": h.start_date,
+                "end_date": h.end_date,
+                "created_at": h.created_at.isoformat(),
+            }
+            for h in entries
+        ]
+    finally:
+        db.close()
+
+
+@router.delete("/history")
+def clear_history(user: User = Depends(get_current_user)):
+    db: Session = SessionLocal()
+    try:
+        db.query(SearchHistory).filter(SearchHistory.user_id == user.id).delete()
+        db.commit()
+        return {"cleared": True}
+    finally:
+        db.close()
+
+
+# ---------- Comparison sets (requires login) ----------
+
+
+class SaveComparisonSetRequest(BaseModel):
+    name: str
+    fields: list[ComparePoint]
+
+
+@router.get("/comparison-sets")
+def list_comparison_sets(user: User = Depends(get_current_user)):
+    db: Session = SessionLocal()
+    try:
+        sets = (
+            db.query(ComparisonSet)
+            .filter(ComparisonSet.user_id == user.id)
+            .order_by(ComparisonSet.created_at.desc())
+            .all()
+        )
+        return [
+            {
+                "id": s.id,
+                "name": s.name,
+                "fields": json.loads(s.fields_json),
+                "created_at": s.created_at.isoformat(),
+            }
+            for s in sets
+        ]
+    finally:
+        db.close()
+
+
+@router.post("/comparison-sets")
+def save_comparison_set(request: SaveComparisonSetRequest, user: User = Depends(get_current_user)):
+    db: Session = SessionLocal()
+    try:
+        cs = ComparisonSet(
+            user_id=user.id,
+            name=request.name,
+            fields_json=json.dumps([f.dict() for f in request.fields]),
+        )
+        db.add(cs)
+        db.commit()
+        db.refresh(cs)
+        return {"id": cs.id, "name": cs.name, "fields": [f.dict() for f in request.fields]}
+    finally:
+        db.close()
+
+
+@router.delete("/comparison-sets/{set_id}")
+def delete_comparison_set(set_id: int, user: User = Depends(get_current_user)):
+    db: Session = SessionLocal()
+    try:
+        cs = (
+            db.query(ComparisonSet)
+            .filter(ComparisonSet.id == set_id, ComparisonSet.user_id == user.id)
+            .first()
+        )
+        if not cs:
+            raise HTTPException(status_code=404, detail="Comparison set not found")
+        db.delete(cs)
+        db.commit()
+        return {"deleted": True, "id": set_id}
     finally:
         db.close()
