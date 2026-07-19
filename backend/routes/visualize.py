@@ -23,17 +23,56 @@ def chart():
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { height: 100%; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #0d0d1a; color: white; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        header { background: linear-gradient(135deg, #1a237e 0%, #283593 100%); color: white; padding: 12px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #b22222; flex-shrink: 0; }
-        .header-logo { width: 36px; height: 36px; background: #b22222; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-        .header-text h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
-        .header-text p { font-size: 11px; opacity: 0.75; margin-top: 2px; }
-        .header-badge { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 3px 10px; font-size: 10px; opacity: 0.9; margin-left: 8px; }
-        .controls { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
-        .controls label { font-size: 11px; opacity: 0.8; }
-        .controls input { padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); font-size: 11px; width: 110px; background: rgba(255,255,255,0.1); color: white; }
-        .controls input::placeholder { color: rgba(255,255,255,0.5); }
-        .controls input:focus { outline: none; border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.15); }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #0a0e14; color: #e8edf2; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .mono { font-family: ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, monospace; }
+
+        header { background: linear-gradient(180deg, #131a24 0%, #0e141c 100%); flex-shrink: 0; border-bottom: 1px solid rgba(45,212,191,0.15); }
+
+        .brand-row { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .brand-mark { position: relative; width: 30px; height: 30px; flex-shrink: 0; }
+        .brand-mark .ring { position: absolute; inset: 0; border: 1.5px solid rgba(45,212,191,0.4); border-radius: 50%; }
+        .brand-mark .dot { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; margin: -3px; background: #2dd4bf; border-radius: 50%; box-shadow: 0 0 8px #2dd4bf; animation: pulse-dot 2.4s ease-in-out infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }
+        .brand-text { display: flex; flex-direction: column; line-height: 1.2; }
+        .brand-text .eyebrow { font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; color: #4a5568; font-weight: 600; }
+        .brand-text .label { font-size: 13px; color: #a8b3c0; font-weight: 500; letter-spacing: 0.2px; }
+        .brand-badge { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 2px 8px; font-size: 9px; color: #7c8797; letter-spacing: 0.3px; margin-left: 4px; }
+
+        .brand-controls { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+        .brand-controls input { padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); font-size: 11px; background: rgba(255,255,255,0.03); color: #e8edf2; }
+        .brand-controls input.mono { width: 96px; }
+        .brand-controls input#search { width: 150px; }
+        .brand-controls input::placeholder { color: #4a5568; }
+        .brand-controls input:focus { outline: none; border-color: rgba(45,212,191,0.5); }
+        .brand-controls label { font-size: 10px; color: #4a5568; text-transform: uppercase; letter-spacing: 0.5px; }
+        .go-btn { padding: 6px 12px; border-radius: 6px; font-size: 11px; cursor: pointer; background: rgba(255,255,255,0.05); color: #a8b3c0; border: 1px solid rgba(255,255,255,0.1); }
+        .go-btn:hover { background: rgba(255,255,255,0.1); }
+
+        .tab-row { display: flex; align-items: center; padding: 0 20px; gap: 4px; }
+        .tab-btn { position: relative; padding: 10px 16px; background: none; border: none; color: #7c8797; font-size: 12px; font-weight: 600; letter-spacing: 0.2px; cursor: pointer; }
+        .tab-btn::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: transparent; }
+        .tab-btn.active { color: #2dd4bf; }
+        .tab-btn.active::after { background: #2dd4bf; }
+        .tab-btn:hover:not(.active) { color: #cbd5e1; }
+
+        .tool-toolbar { display: flex; align-items: center; gap: 4px; margin-left: 8px; padding-left: 12px; border-left: 1px solid rgba(255,255,255,0.08); }
+        .tool-btn { padding: 6px 11px; border-radius: 6px; font-size: 10.5px; font-weight: 500; cursor: pointer; background: transparent; color: #7c8797; border: 1px solid transparent; letter-spacing: 0.2px; }
+        .tool-btn:hover { background: rgba(255,255,255,0.05); color: #cbd5e1; }
+        .tool-btn.active { background: rgba(45,212,191,0.12); color: #2dd4bf; border-color: rgba(45,212,191,0.3); }
+        .tool-btn.active.mode-drought { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.3); }
+        .tool-btn.active.mode-ndvi { background: rgba(74,222,128,0.12); color: #4ade80; border-color: rgba(74,222,128,0.3); }
+        .tool-btn.active.mode-crop { background: rgba(251,191,36,0.12); color: #fbbf24; border-color: rgba(251,191,36,0.3); }
+
+        .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+        .history-icon-btn { padding: 6px 12px; border-radius: 6px; font-size: 10.5px; font-weight: 500; cursor: pointer; background: transparent; color: #7c8797; border: 1px solid rgba(255,255,255,0.1); }
+        .history-icon-btn:hover { color: #cbd5e1; background: rgba(255,255,255,0.05); }
+        .auth-chip { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 20px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); }
+        .auth-chip .name { font-size: 11px; color: #cbd5e1; }
+        .auth-chip button { padding: 4px 10px; border-radius: 14px; font-size: 10px; background: rgba(255,255,255,0.06); color: #7c8797; border: none; cursor: pointer; }
+        .auth-chip button:hover { color: #e8edf2; }
+        .signin-btn { padding: 7px 16px; border-radius: 18px; font-size: 11px; font-weight: 600; cursor: pointer; background: #2dd4bf; color: #0a0e14; border: none; }
+        .signin-btn:hover { background: #5eead4; }
+
         .btn { padding: 6px 14px; border: none; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: 500; transition: all 0.15s; }
         .btn-go { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); }
         .btn-go:hover { background: rgba(255,255,255,0.25); }
@@ -96,27 +135,36 @@ def chart():
 </head>
 <body>
     <header>
-        <div class="header-logo">🌿</div>
-        <div class="header-text">
-            <h1>OpenET Water Use Platform <span class="header-badge">Cornell M.Eng</span></h1>
-            <p>Satellite-based agricultural evapotranspiration analysis — Finger Lakes Region</p>
+        <div class="brand-row">
+            <div class="brand-mark"><div class="ring"></div><div class="dot"></div></div>
+            <div class="brand-text">
+                <span class="eyebrow">Water Use Analysis</span>
+                <span class="label">Finger Lakes Region <span class="brand-badge">Cornell M.Eng</span></span>
+            </div>
+            <div class="brand-controls">
+                <input type="text" id="search" placeholder="Search location..."
+                    onkeydown="if(event.key==='Enter') searchLocation()"/>
+                <button class="go-btn" onclick="searchLocation()">Go</button>
+                <label>From</label>
+                <input type="text" id="start" class="mono" value="2022-01-01"/>
+                <label>To</label>
+                <input type="text" id="end" class="mono" value="2023-12-31"/>
+            </div>
         </div>
-        <div class="controls">
-            <input type="text" id="search" placeholder="Search location..." style="width:150px;"
-                onkeydown="if(event.key==='Enter') searchLocation()"/>
-            <button class="btn btn-go" onclick="searchLocation()">Go</button>
-            <label>From</label>
-            <input type="text" id="start" value="2022-01-01"/>
-            <label>To</label>
-            <input type="text" id="end" value="2023-12-31"/>
-            <button class="btn btn-heatmap" id="heatmap-btn" onclick="toggleHeatmap()">Heatmap Off</button>
-            <button class="btn" id="heatmap-mode-btn" onclick="toggleHeatmapMode()" style="background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);display:none;">Mode: Intensity</button>
-            <button class="btn" id="ndvi-btn" onclick="toggleNDVI()" style="background:rgba(74,222,128,0.2);color:#4ade80;border:1px solid rgba(74,222,128,0.5);">NDVI Off</button>
-            <button class="btn" id="cdl-btn" onclick="toggleCDL()" style="background:rgba(251,191,36,0.2);color:#fbbf24;border:1px solid rgba(251,191,36,0.5);">Crop Type Off</button>
-            <button class="btn" id="usdm-btn" onclick="toggleUSDM()" style="background:rgba(248,113,113,0.2);color:#f87171;border:1px solid rgba(248,113,113,0.5);">Drought Off</button>
-            <button class="btn" id="compare-btn" onclick="toggleCompareMode()" style="background:rgba(96,165,250,0.2);color:#60a5fa;border:1px solid rgba(96,165,250,0.5);">Compare Off</button>
-            <button class="btn" id="history-btn" onclick="toggleHistoryPanel()" style="background:rgba(167,139,250,0.2);color:#a78bfa;border:1px solid rgba(167,139,250,0.5);">History</button>
-            <div id="auth-section" style="display:flex; align-items:center; gap:8px;"></div>
+        <div class="tab-row">
+            <button class="tab-btn active" id="tab-map" onclick="switchTab('map')">Map</button>
+            <button class="tab-btn" id="tab-compare" onclick="switchTab('compare')">Compare</button>
+            <div class="tool-toolbar">
+                <button class="tool-btn" id="heatmap-btn" onclick="toggleHeatmap()">Heatmap</button>
+                <button class="tool-btn" id="heatmap-mode-btn" onclick="toggleHeatmapMode()" style="display:none;">Mode: Intensity</button>
+                <button class="tool-btn" id="ndvi-btn" onclick="toggleNDVI()">NDVI</button>
+                <button class="tool-btn" id="cdl-btn" onclick="toggleCDL()">Crop Type</button>
+                <button class="tool-btn" id="usdm-btn" onclick="toggleUSDM()">Drought</button>
+            </div>
+            <div class="header-right">
+                <button class="history-icon-btn" id="history-btn" onclick="toggleHistoryPanel()">History</button>
+                <div id="auth-section"></div>
+            </div>
         </div>
     </header>
 
@@ -267,7 +315,7 @@ def chart():
         </div>
     </div>
 
-    <div class="compare-panel" id="history-panel" style="display:none; top:70px;">
+    <div class="compare-panel" id="history-panel" style="display:none; top:100px;">
         <div class="compare-panel-title">Search History</div>
         <div id="history-items" style="max-height:240px; overflow-y:auto;"></div>
         <button class="compare-run-btn" onclick="clearHistoryList()" style="background:#7f1d1d; margin-top:8px;">Clear History</button>
@@ -346,11 +394,11 @@ def chart():
             const legend = document.getElementById('ndvi-legend');
             if (ndviVisible) {
                 map.removeLayer(ndviLayer); ndviVisible = false;
-                btn.innerText = 'NDVI Off'; btn.style.background = 'rgba(74,222,128,0.2)';
+                btn.classList.remove('active', 'mode-ndvi');
                 legend.style.display = 'none';
             } else {
                 ndviLayer.addTo(map); ndviVisible = true;
-                btn.innerText = 'NDVI On'; btn.style.background = 'rgba(74,222,128,0.6)';
+                btn.classList.add('active', 'mode-ndvi');
                 legend.style.display = 'block';
                 if (map.getZoom() > 7) map.setZoom(7);
             }
@@ -380,12 +428,12 @@ def chart():
                 cdlOverlay = null;
                 map.off('moveend', updateCDLOverlay);
                 cdlVisible = false;
-                btn.innerText = 'Crop Type Off'; btn.style.background = 'rgba(251,191,36,0.2)';
+                btn.classList.remove('active', 'mode-crop');
                 legend.style.display = 'none'; satellite.setOpacity(1.0);
             } else {
                 satellite.setOpacity(0.5);
                 cdlVisible = true;
-                btn.innerText = 'Crop Type On'; btn.style.background = 'rgba(251,191,36,0.6)';
+                btn.classList.add('active', 'mode-crop');
                 legend.style.display = 'block';
                 updateCDLOverlay();
                 map.on('moveend', updateCDLOverlay);
@@ -406,28 +454,27 @@ def chart():
             const legend = document.getElementById('usdm-legend');
             if (usdmVisible) {
                 map.removeLayer(usdmLayer); usdmVisible = false;
-                btn.innerText = 'Drought Off'; btn.style.background = 'rgba(248,113,113,0.2)';
+                btn.classList.remove('active', 'mode-drought');
                 legend.style.display = 'none';
             } else {
                 usdmLayer.addTo(map); usdmVisible = true;
-                btn.innerText = 'Drought On'; btn.style.background = 'rgba(248,113,113,0.6)';
+                btn.classList.add('active', 'mode-drought');
                 legend.style.display = 'block';
             }
         }
 
-        // ---------- Compare Mode ----------
+        // ---------- Map / Compare tabs ----------
 
-        function toggleCompareMode() {
-            const btn = document.getElementById('compare-btn');
+        function switchTab(tab) {
+            compareMode = tab === 'compare';
+            document.getElementById('tab-map').classList.toggle('active', tab === 'map');
+            document.getElementById('tab-compare').classList.toggle('active', tab === 'compare');
             const panel = document.getElementById('compare-list-panel');
-            compareMode = !compareMode;
             if (compareMode) {
-                btn.innerText = 'Compare On'; btn.style.background = 'rgba(96,165,250,0.6)';
                 panel.style.display = 'block';
                 loadSavedFieldsDropdown();
                 loadComparisonSetsDropdown();
             } else {
-                btn.innerText = 'Compare Off'; btn.style.background = 'rgba(96,165,250,0.2)';
                 panel.style.display = 'none';
             }
         }
@@ -684,12 +731,13 @@ def chart():
             const modeBtn = document.getElementById('heatmap-mode-btn');
             heatmapVisible = !heatmapVisible;
             if (heatmapVisible) {
-                btn.innerText = 'Heatmap On';
+                btn.classList.add('active');
                 modeBtn.style.display = 'inline-block';
                 loadHeatmapData();
             } else {
-                btn.innerText = 'Heatmap Off';
+                btn.classList.remove('active');
                 modeBtn.style.display = 'none';
+                modeBtn.classList.remove('active');
                 if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
                 document.getElementById('heatmap-status').innerText = '';
             }
@@ -702,10 +750,12 @@ def chart():
             const labels = document.getElementById('heatmap-legend-labels');
             if (heatmapMode === 'anomaly') {
                 modeBtn.innerText = 'Mode: Anomaly';
+                modeBtn.classList.add('active', 'mode-drought');
                 title.innerText = 'Anomaly Severity';
                 labels.innerHTML = '<span>Normal</span><span>Extreme</span>';
             } else {
                 modeBtn.innerText = 'Mode: Intensity';
+                modeBtn.classList.remove('active', 'mode-drought');
                 title.innerText = 'ET Intensity';
                 labels.innerHTML = '<span>Low</span><span>High</span>';
             }
@@ -978,10 +1028,10 @@ def chart():
             const container = document.getElementById('auth-section');
             if (currentUser) {
                 container.innerHTML =
-                    '<span style="font-size:11px;opacity:0.85;">' + (currentUser.name || currentUser.email) + '</span>' +
-                    '<button class="btn" onclick="logout()" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);">Log Out</button>';
+                    '<div class="auth-chip"><span class="name">' + (currentUser.name || currentUser.email) + '</span>' +
+                    '<button onclick="logout()">Log Out</button></div>';
             } else {
-                container.innerHTML = '<button class="btn" onclick="openAuthModal()" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);">Sign In</button>';
+                container.innerHTML = '<button class="signin-btn" onclick="openAuthModal()">Sign In</button>';
             }
         }
 
