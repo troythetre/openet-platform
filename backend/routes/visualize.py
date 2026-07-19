@@ -19,8 +19,9 @@ def chart():
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #0d0d1a; color: white; }
-        header { background: linear-gradient(135deg, #1a237e 0%, #283593 100%); color: white; padding: 12px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #b22222; }
+        html, body { height: 100%; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #0d0d1a; color: white; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        header { background: linear-gradient(135deg, #1a237e 0%, #283593 100%); color: white; padding: 12px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #b22222; flex-shrink: 0; }
         .header-logo { width: 36px; height: 36px; background: #b22222; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
         .header-text h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
         .header-text p { font-size: 11px; opacity: 0.75; margin-top: 2px; }
@@ -35,9 +36,9 @@ def chart():
         .btn-go:hover { background: rgba(255,255,255,0.25); }
         .btn-heatmap { background: #4CAF50; color: white; }
         .btn-heatmap:hover { background: #388E3C; }
-        .main { display: grid; grid-template-columns: 1fr 380px; height: calc(100vh - 64px); }
+        .main { display: grid; grid-template-columns: 1fr 380px; flex: 1; min-height: 0; }
         #map { width: 100%; height: 100%; }
-        .side-panel { background: #111827; display: flex; flex-direction: column; overflow: hidden; border-left: 1px solid rgba(255,255,255,0.08); }
+        .side-panel { background: #111827; display: flex; flex-direction: column; overflow: hidden; min-height: 0; border-left: 1px solid rgba(255,255,255,0.08); }
         .side-panel-header { padding: 16px 20px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .side-panel-header h2 { font-size: 13px; font-weight: 600; color: #90caf9; letter-spacing: 0.5px; text-transform: uppercase; }
         .side-panel-body { padding: 16px 20px; flex: 1; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
@@ -148,6 +149,7 @@ def chart():
                         <div><span style="display:inline-block;width:10px;height:10px;background:#730000;margin-right:4px;border-radius:2px;"></span>D4 — Exceptional Drought</div>
                     </div>
                 </div>
+            </div>
             <div class="compare-panel" id="compare-list-panel">
                 <div class="compare-panel-title">Compare Fields (<span id="compare-count">0</span>)</div>
                 <div id="compare-items"></div>
@@ -215,13 +217,13 @@ def chart():
 
                 <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px;">
                     <div style="font-size:12px; font-weight:600; color:#90caf9; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px;">AI Assistant</div>
-                    <div id="chat-messages" style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:10px;"></div>
-                    <div style="display:flex; gap:6px;">
-                        <input type="text" id="chat-input" placeholder="Ask about the ET data..."
-                            style="flex:1; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.08); color:white; font-size:12px;"
-                            onkeydown="if(event.key==='Enter') sendChat()"/>
-                        <button onclick="sendChat()" style="padding:8px 12px; background:#1a237e; color:white; border:none; border-radius:6px; font-size:12px; cursor:pointer;">Send</button>
+                    <div id="chat-messages" style="max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:10px;"></div>
+                    <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                        <button class="suggested-q" onclick="answerPreset('summarize')" style="padding:6px 12px; background:rgba(144,202,249,0.1); color:#90caf9; border:1px solid rgba(144,202,249,0.3); border-radius:12px; font-size:11px; cursor:pointer;">Summarize this field</button>
+                        <button class="suggested-q" onclick="answerPreset('anomalies')" style="padding:6px 12px; background:rgba(144,202,249,0.1); color:#90caf9; border:1px solid rgba(144,202,249,0.3); border-radius:12px; font-size:11px; cursor:pointer;">Explain anomalies</button>
+                        <button class="suggested-q" onclick="answerPreset('compare')" style="padding:6px 12px; background:rgba(144,202,249,0.1); color:#90caf9; border:1px solid rgba(144,202,249,0.3); border-radius:12px; font-size:11px; cursor:pointer;">Compare years</button>
                     </div>
+                    <div style="font-size:10px; color:rgba(255,255,255,0.3); margin-top:8px;">Click a question above — answers are generated instantly from the loaded field data, no AI service required.</div>
                 </div>
                 <div class="heatmap-status" id="heatmap-status"></div>
             </div>
@@ -869,32 +871,87 @@ def chart():
             else { alert('Location not found.'); }
         }
 
-        async function sendChat() {
-            const input = document.getElementById('chat-input');
-            const msg = input.value.trim();
-            if (!msg) return;
-            input.value = '';
+        // AI Assistant (free tier): no external API call at all. Every
+        // answer is computed locally from window.currentETData, which is
+        // already loaded whenever a field's chart is showing. Zero cost,
+        // zero dependency on any funded API key.
+
+        function addChatBubble(text, fromUser) {
             const messages = document.getElementById('chat-messages');
-            messages.innerHTML += '<div style="background:rgba(37,99,235,0.2);border-radius:8px;padding:8px 10px;font-size:12px;align-self:flex-end;max-width:85%;">' + msg + '</div>';
-            messages.innerHTML += '<div id="chat-loading" style="font-size:11px;color:rgba(255,255,255,0.4);">Thinking...</div>';
+            const style = fromUser
+                ? 'background:rgba(37,99,235,0.2);border-radius:8px;padding:8px 10px;font-size:12px;align-self:flex-end;max-width:85%;'
+                : 'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 10px;font-size:12px;max-width:95%;line-height:1.5;';
+            messages.innerHTML += '<div style="' + style + '">' + text + '</div>';
             messages.scrollTop = messages.scrollHeight;
-            try {
-                const etData = window.currentETData || [];
-                const location = document.getElementById('search').value || 'Finger Lakes';
+        }
+
+        function answerPreset(type) {
+            const data = window.currentETData;
+            const questionLabels = {
+                summarize: 'Summarize this field',
+                anomalies: 'Explain anomalies',
+                compare: 'Compare years'
+            };
+            addChatBubble(questionLabels[type], true);
+
+            if (!data || data.length === 0) {
+                addChatBubble('No field is loaded yet — click a green dot or draw a polygon on the map first, then ask again.', false);
+                return;
+            }
+
+            if (type === 'summarize') {
+                const total = data.reduce(function(sum, d) { return sum + d.et; }, 0);
+                const avg = total / data.length;
+                const anomalyCount = data.filter(function(d) { return d.anomaly; }).length;
                 const start = document.getElementById('start').value;
                 const end = document.getElementById('end').value;
-                const res = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: msg, et_data: etData, location: location, date_range: start + ' to ' + end })
+                addChatBubble(
+                    'From ' + start + ' to ' + end + ', total evapotranspiration was <b>' + total.toFixed(1) + ' inches</b>, ' +
+                    'averaging <b>' + avg.toFixed(2) + ' inches/month</b>. ' +
+                    (anomalyCount > 0
+                        ? anomalyCount + ' month' + (anomalyCount > 1 ? 's' : '') + ' showed anomalous water use — see "Explain anomalies" for details.'
+                        : 'No anomalous months were detected in this period.'),
+                    false
+                );
+            }
+
+            if (type === 'anomalies') {
+                const anomalies = data.filter(function(d) { return d.anomaly; });
+                if (anomalies.length === 0) {
+                    addChatBubble('No anomalies detected — every month fell within the normal range compared to that same month in other years.', false);
+                    return;
+                }
+                const lines = anomalies.map(function(d) {
+                    return d.time.slice(0, 7) + ': ' + (d.anomaly_type === 'high' ? 'unusually high' : 'unusually low') + ' ET (' + d.normalized + '% of typical)';
                 });
-                const data = await res.json();
-                document.getElementById('chat-loading').remove();
-                messages.innerHTML += '<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 10px;font-size:12px;max-width:90%;line-height:1.5;">' + data.response + '</div>';
-                messages.scrollTop = messages.scrollHeight;
-            } catch(e) {
-                document.getElementById('chat-loading').remove();
-                messages.innerHTML += '<div style="color:#ef4444;font-size:11px;">Error — try again.</div>';
+                addChatBubble(
+                    '<b>' + anomalies.length + ' anomal' + (anomalies.length > 1 ? 'ies' : 'y') + ' detected:</b><br>' + lines.join('<br>'),
+                    false
+                );
+            }
+
+            if (type === 'compare') {
+                const years = {};
+                data.forEach(function(d) {
+                    const year = d.time.slice(0, 4);
+                    if (!years[year]) years[year] = 0;
+                    years[year] += d.et;
+                });
+                const yearList = Object.keys(years).sort();
+                if (yearList.length < 2) {
+                    addChatBubble('Only one year (' + yearList[0] + ') is in the selected date range — pick a wider range to compare across years.', false);
+                    return;
+                }
+                const lines = yearList.map(function(y) { return y + ': ' + years[y].toFixed(1) + ' in'; });
+                const first = years[yearList[0]];
+                const last = years[yearList[yearList.length - 1]];
+                const pctChange = first > 0 ? (((last - first) / first) * 100).toFixed(1) : 'N/A';
+                addChatBubble(
+                    lines.join('<br>') + '<br><br>' +
+                    yearList[yearList.length - 1] + ' vs ' + yearList[0] + ': ' +
+                    (last >= first ? '+' : '') + pctChange + '% change in total annual ET.',
+                    false
+                );
             }
         }
     </script>
