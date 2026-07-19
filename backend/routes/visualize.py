@@ -75,6 +75,19 @@ def chart():
         .empty-state .icon { font-size: 32px; }
         .empty-state p { font-size: 12px; text-align: center; line-height: 1.5; }
         .section-label { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: -6px; }
+        .compare-panel { display:none; position:absolute; top:10px; right:10px; z-index:1000; background:rgba(0,0,0,0.85); padding:12px 14px; border-radius:10px; color:white; font-size:12px; max-width:240px; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.1); }
+        .compare-panel-title { font-weight:600; margin-bottom:8px; }
+        .compare-item { display:flex; align-items:center; justify-content:space-between; gap:4px; background:rgba(255,255,255,0.05); padding:4px 6px; border-radius:4px; margin-bottom:6px; }
+        .compare-item span.name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:120px; }
+        .compare-item .actions button { background:none; border:none; cursor:pointer; font-size:12px; }
+        .compare-select { width:100%; font-size:11px; background:rgba(255,255,255,0.1); color:white; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px; margin-top:8px; }
+        .compare-run-btn { margin-top:8px; width:100%; padding:6px; background:#2563eb; color:white; border:none; border-radius:6px; cursor:pointer; font-size:12px; }
+        .compare-modal-backdrop { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.75); z-index:2000; align-items:center; justify-content:center; }
+        .compare-modal-box { background:#111827; border-radius:12px; padding:24px; max-width:900px; width:90%; max-height:85vh; overflow-y:auto; border:1px solid rgba(255,255,255,0.1); }
+        .compare-modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+        .compare-modal-header h2 { font-size:16px; color:#90caf9; }
+        .compare-modal-close { background:none; border:none; color:white; font-size:20px; cursor:pointer; }
+        #compare-table { width:100%; margin-top:20px; border-collapse:collapse; font-size:12px; }
     </style>
 </head>
 <body>
@@ -92,9 +105,12 @@ def chart():
             <input type="text" id="start" value="2022-01-01"/>
             <label>To</label>
             <input type="text" id="end" value="2023-12-31"/>
-            <button class="btn btn-heatmap" onclick="refreshHeatmap()">Load Heatmap</button>
+            <button class="btn btn-heatmap" id="heatmap-btn" onclick="toggleHeatmap()">Heatmap Off</button>
+            <button class="btn" id="heatmap-mode-btn" onclick="toggleHeatmapMode()" style="background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);display:none;">Mode: Intensity</button>
             <button class="btn" id="ndvi-btn" onclick="toggleNDVI()" style="background:rgba(74,222,128,0.2);color:#4ade80;border:1px solid rgba(74,222,128,0.5);">NDVI Off</button>
-            <button class="btn" id="cdl-btn" onclick="toggleCDL()" style="background:rgba(251,191,36,0.2);color:#fbbf24;border:1px solid rgba(251,191,36,0.5);">CDL Off</button>
+            <button class="btn" id="cdl-btn" onclick="toggleCDL()" style="background:rgba(251,191,36,0.2);color:#fbbf24;border:1px solid rgba(251,191,36,0.5);">Crop Type Off</button>
+            <button class="btn" id="usdm-btn" onclick="toggleUSDM()" style="background:rgba(248,113,113,0.2);color:#f87171;border:1px solid rgba(248,113,113,0.5);">Drought Off</button>
+            <button class="btn" id="compare-btn" onclick="toggleCompareMode()" style="background:rgba(96,165,250,0.2);color:#60a5fa;border:1px solid rgba(96,165,250,0.5);">Compare Off</button>
         </div>
     </header>
 
@@ -102,25 +118,43 @@ def chart():
         <div style="position:relative;">
             <div id="map"></div>
             <div class="map-overlay">
-                <div style="font-weight:500;margin-bottom:2px;">ET Intensity</div>
+                <div style="font-weight:500;margin-bottom:2px;" id="heatmap-legend-title">ET Intensity</div>
                 <div class="color-bar"></div>
-                <div class="color-labels"><span>Low</span><span>High</span></div>
+                <div class="color-labels" id="heatmap-legend-labels"><span>Low</span><span>High</span></div>
                 <div id="ndvi-legend" style="display:none;margin-top:10px;">
                     <div style="font-weight:500;margin-bottom:2px;">NDVI (Vegetation)</div>
                     <div style="width:140px;height:8px;border-radius:4px;background:linear-gradient(to right,#8B4513,#d4a853,#90EE90,#228B22);margin:4px 0;"></div>
                     <div style="display:flex;justify-content:space-between;font-size:10px;opacity:0.7;"><span>Bare soil</span><span>Dense veg</span></div>
                 </div>
                 <div id="cdl-legend" style="display:none;margin-top:10px;">
-                    <div style="font-weight:500;margin-bottom:4px;">NLCD Land Cover</div>
+                    <div style="font-weight:500;margin-bottom:4px;">USDA CDL — Crop Type</div>
                     <div style="display:flex;flex-direction:column;gap:3px;font-size:10px;">
-                        <div><span style="display:inline-block;width:10px;height:10px;background:#ab6c28;margin-right:4px;border-radius:2px;"></span>Cultivated Crops</div>
-                        <div><span style="display:inline-block;width:10px;height:10px;background:#dcd939;margin-right:4px;border-radius:2px;"></span>Hay/Pasture</div>
-                        <div><span style="display:inline-block;width:10px;height:10px;background:#68ab5f;margin-right:4px;border-radius:2px;"></span>Deciduous Forest</div>
-                        <div><span style="display:inline-block;width:10px;height:10px;background:#1c6330;margin-right:4px;border-radius:2px;"></span>Evergreen Forest</div>
-                        <div><span style="display:inline-block;width:10px;height:10px;background:#b8d9eb;margin-right:4px;border-radius:2px;"></span>Open Water</div>
-                        <div><span style="display:inline-block;width:10px;height:10px;background:#d2cdc0;margin-right:4px;border-radius:2px;"></span>Developed</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#ffd400;margin-right:4px;border-radius:2px;"></span>Corn</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#267000;margin-right:4px;border-radius:2px;"></span>Soybeans</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#e2007c;margin-right:4px;border-radius:2px;"></span>Grapes / Vineyard</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#a87000;margin-right:4px;border-radius:2px;"></span>Orchard / Fruit</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#dfd642;margin-right:4px;border-radius:2px;"></span>Hay / Pasture</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#93cc93;margin-right:4px;border-radius:2px;"></span>Forest</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#4970a3;margin-right:4px;border-radius:2px;"></span>Water</div>
                     </div>
                 </div>
+                <div id="usdm-legend" style="display:none;margin-top:10px;">
+                    <div style="font-weight:500;margin-bottom:4px;">U.S. Drought Monitor</div>
+                    <div style="display:flex;flex-direction:column;gap:3px;font-size:10px;">
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#FFFF00;margin-right:4px;border-radius:2px;"></span>D0 — Abnormally Dry</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#FCD37F;margin-right:4px;border-radius:2px;"></span>D1 — Moderate Drought</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#FFAA00;margin-right:4px;border-radius:2px;"></span>D2 — Severe Drought</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#E60000;margin-right:4px;border-radius:2px;"></span>D3 — Extreme Drought</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;background:#730000;margin-right:4px;border-radius:2px;"></span>D4 — Exceptional Drought</div>
+                    </div>
+                </div>
+            <div class="compare-panel" id="compare-list-panel">
+                <div class="compare-panel-title">Compare Fields (<span id="compare-count">0</span>)</div>
+                <div id="compare-items"></div>
+                <select class="compare-select" id="saved-fields-select" onchange="onSavedFieldSelected()">
+                    <option value="">Load saved field...</option>
+                </select>
+                <button class="compare-run-btn" onclick="runComparison()">Run Comparison</button>
             </div>
         </div>
         <div class="side-panel">
@@ -194,6 +228,17 @@ def chart():
         </div>
     </div>
 
+    <div class="compare-modal-backdrop" id="compare-modal">
+        <div class="compare-modal-box">
+            <div class="compare-modal-header">
+                <h2>Field Comparison</h2>
+                <button class="compare-modal-close" onclick="closeCompareModal()">×</button>
+            </div>
+            <canvas id="compare-chart" style="max-height:320px;"></canvas>
+            <table id="compare-table"></table>
+        </div>
+    </div>
+
     <script>
         let chart;
         let marker;
@@ -202,6 +247,9 @@ def chart():
         let currentLat = null;
         let ndviVisible = false;
         let cdlVisible = false;
+        let compareMode = false;
+        let compareList = [];
+        let compareChart;
 
         function r2(n) { return Math.round(parseFloat(n) * 100) / 100; }
 
@@ -239,11 +287,6 @@ def chart():
             { attribution: 'NASA GIBS — MODIS NDVI July 2023', opacity: 1.0, maxZoom: 7 }
         );
 
-        const cdlLayer = L.tileLayer.wms(
-            'https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/wms?',
-            { layers: 'NLCD_2021_Land_Cover_L48', format: 'image/png', transparent: true, opacity: 0.8, attribution: 'USGS MRLC NLCD 2021' }
-        );
-
         function toggleNDVI() {
             const btn = document.getElementById('ndvi-btn');
             const legend = document.getElementById('ndvi-legend');
@@ -259,18 +302,207 @@ def chart():
             }
         }
 
+        // CDL layer — this WMS server only supports EPSG:4326, not Leaflet's
+        // default EPSG:3857 tile grid, so we request a single stretched
+        // image matching the current viewport instead of tiling.
+        let cdlOverlay = null;
+
+        function updateCDLOverlay() {
+            if (!cdlVisible) return;
+            const b = map.getBounds();
+            const size = map.getSize();
+            const bbox = b.getWest() + ',' + b.getSouth() + ',' + b.getEast() + ',' + b.getNorth();
+            const url = 'https://nassgeodata.gmu.edu/CropScapeService/wms_cdlall.cgi?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=cdl_2023&SRS=EPSG:4326&BBOX=' + bbox +
+                '&WIDTH=' + Math.round(size.x) + '&HEIGHT=' + Math.round(size.y) + '&FORMAT=image/png&TRANSPARENT=TRUE';
+            if (cdlOverlay) map.removeLayer(cdlOverlay);
+            cdlOverlay = L.imageOverlay(url, b, { opacity: 0.75 }).addTo(map);
+        }
+
         function toggleCDL() {
             const btn = document.getElementById('cdl-btn');
             const legend = document.getElementById('cdl-legend');
             if (cdlVisible) {
-                map.removeLayer(cdlLayer); cdlVisible = false;
-                btn.innerText = 'CDL Off'; btn.style.background = 'rgba(251,191,36,0.2)';
+                if (cdlOverlay) map.removeLayer(cdlOverlay);
+                cdlOverlay = null;
+                map.off('moveend', updateCDLOverlay);
+                cdlVisible = false;
+                btn.innerText = 'Crop Type Off'; btn.style.background = 'rgba(251,191,36,0.2)';
                 legend.style.display = 'none'; satellite.setOpacity(1.0);
             } else {
-                satellite.setOpacity(0.5); cdlLayer.addTo(map); cdlVisible = true;
-                btn.innerText = 'CDL On'; btn.style.background = 'rgba(251,191,36,0.6)';
+                satellite.setOpacity(0.5);
+                cdlVisible = true;
+                btn.innerText = 'Crop Type On'; btn.style.background = 'rgba(251,191,36,0.6)';
+                legend.style.display = 'block';
+                updateCDLOverlay();
+                map.on('moveend', updateCDLOverlay);
+            }
+        }
+
+        // USDM — U.S. Drought Monitor, served as a standard EPSG:3857 tile
+        // service (unlike CDL's WMS), so this is a plain L.tileLayer, no
+        // CRS workaround needed.
+        const usdmLayer = L.tileLayer(
+            'https://services5.arcgis.com/0OTVzJS4K09zlixn/ArcGIS/rest/services/US_Drought_Monitor/MapServer/tile/{z}/{y}/{x}',
+            { attribution: 'NDMC / USDA / NOAA — U.S. Drought Monitor', opacity: 0.7, maxZoom: 19 }
+        );
+        let usdmVisible = false;
+
+        function toggleUSDM() {
+            const btn = document.getElementById('usdm-btn');
+            const legend = document.getElementById('usdm-legend');
+            if (usdmVisible) {
+                map.removeLayer(usdmLayer); usdmVisible = false;
+                btn.innerText = 'Drought Off'; btn.style.background = 'rgba(248,113,113,0.2)';
+                legend.style.display = 'none';
+            } else {
+                usdmLayer.addTo(map); usdmVisible = true;
+                btn.innerText = 'Drought On'; btn.style.background = 'rgba(248,113,113,0.6)';
                 legend.style.display = 'block';
             }
+        }
+
+        // ---------- Compare Mode ----------
+
+        function toggleCompareMode() {
+            const btn = document.getElementById('compare-btn');
+            const panel = document.getElementById('compare-list-panel');
+            compareMode = !compareMode;
+            if (compareMode) {
+                btn.innerText = 'Compare On'; btn.style.background = 'rgba(96,165,250,0.6)';
+                panel.style.display = 'block';
+                loadSavedFieldsDropdown();
+            } else {
+                btn.innerText = 'Compare Off'; btn.style.background = 'rgba(96,165,250,0.2)';
+                panel.style.display = 'none';
+            }
+        }
+
+        async function loadSavedFieldsDropdown() {
+            const select = document.getElementById('saved-fields-select');
+            select.innerHTML = '<option value="">Load saved field...</option>';
+            try {
+                const res = await fetch('/api/fields');
+                const fields = await res.json();
+                fields.forEach(function(f) {
+                    const opt = document.createElement('option');
+                    opt.value = JSON.stringify(f);
+                    opt.innerText = f.name;
+                    select.appendChild(opt);
+                });
+            } catch(e) {}
+        }
+
+        function onSavedFieldSelected() {
+            const select = document.getElementById('saved-fields-select');
+            if (!select.value) return;
+            const f = JSON.parse(select.value);
+            addToCompareList(f.name, f.longitude, f.latitude);
+            select.value = '';
+        }
+
+        function addToCompareList(label, lng, lat) {
+            compareList.push({ label: label, longitude: lng, latitude: lat });
+            renderCompareItems();
+        }
+
+        function removeFromCompareList(index) {
+            compareList.splice(index, 1);
+            renderCompareItems();
+        }
+
+        async function saveCompareItem(index) {
+            const item = compareList[index];
+            try {
+                await fetch('/api/fields', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: item.label, longitude: item.longitude, latitude: item.latitude })
+                });
+                loadSavedFieldsDropdown();
+            } catch(e) {
+                alert('Failed to save field.');
+            }
+        }
+
+        function renderCompareItems() {
+            document.getElementById('compare-count').innerText = compareList.length;
+            const container = document.getElementById('compare-items');
+            container.innerHTML = compareList.map(function(item, i) {
+                return '<div class="compare-item">' +
+                    '<span class="name">' + item.label + '</span>' +
+                    '<span class="actions">' +
+                    '<button onclick="saveCompareItem(' + i + ')" title="Save field" style="color:#4ade80;">💾</button>' +
+                    '<button onclick="removeFromCompareList(' + i + ')" title="Remove" style="color:#ef4444;">×</button>' +
+                    '</span></div>';
+            }).join('');
+        }
+
+        async function runComparison() {
+            if (compareList.length === 0) { alert('Add at least one field first.'); return; }
+            if (compareList.length > 8) { alert('Maximum 8 fields per comparison.'); return; }
+            const start = document.getElementById('start').value;
+            const end = document.getElementById('end').value;
+            const points = compareList.map(function(item) {
+                return { label: item.label, longitude: item.longitude, latitude: item.latitude };
+            });
+            try {
+                const res = await fetch('/api/et/compare', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ points: points, start_date: start, end_date: end })
+                });
+                const data = await res.json();
+                renderCompareModal(data.fields);
+            } catch(e) {
+                alert('Comparison failed — check console.');
+            }
+        }
+
+        function renderCompareModal(fields) {
+            document.getElementById('compare-modal').style.display = 'flex';
+            const monthLabels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const palette = ['#60a5fa','#4ade80','#f472b6','#fbbf24','#a78bfa','#fb923c','#34d399','#f87171'];
+
+            const datasets = fields.filter(function(f){ return !f.error; }).map(function(f, i) {
+                return {
+                    label: f.label,
+                    data: f.monthly_avg,
+                    borderColor: palette[i % palette.length],
+                    backgroundColor: palette[i % palette.length],
+                    fill: false,
+                    tension: 0.3
+                };
+            });
+
+            if (compareChart) compareChart.destroy();
+            compareChart = new Chart(document.getElementById('compare-chart'), {
+                type: 'line',
+                data: { labels: monthLabels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { labels: { color: '#aaa' } } },
+                    scales: {
+                        y: { ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: 'Avg ET (in)', color: '#aaa' } },
+                        x: { ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.06)' } }
+                    }
+                }
+            });
+
+            const table = document.getElementById('compare-table');
+            let html = '<tr style="border-bottom:1px solid rgba(255,255,255,0.15);color:#90caf9;text-align:left;">' +
+                '<th style="padding:6px;">Field</th><th style="padding:6px;">Total ET (in)</th><th style="padding:6px;">Avg Monthly (in)</th><th style="padding:6px;">Anomalies</th></tr>';
+            fields.forEach(function(f) {
+                if (f.error) {
+                    html += '<tr><td style="padding:6px;">' + f.label + '</td><td colspan="3" style="padding:6px;color:#ef4444;">' + f.error + '</td></tr>';
+                } else {
+                    html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:6px;">' + f.label + '</td><td style="padding:6px;">' + f.total_et + '</td><td style="padding:6px;">' + f.avg_monthly_et + '</td><td style="padding:6px;' + (f.anomaly_count > 0 ? 'color:#ef4444;' : '') + '">' + f.anomaly_count + '</td></tr>';
+                }
+            });
+            table.innerHTML = html;
+        }
+
+        function closeCompareModal() {
+            document.getElementById('compare-modal').style.display = 'none';
         }
 
         const drawnItems = new L.FeatureGroup();
@@ -285,25 +517,99 @@ def chart():
         });
         map.addControl(drawControl);
 
+        // Cap how large a field a user can draw. Beyond this, the 9-point
+        // sampling stops being representative of a single "field" and just
+        // burns API quota across an increasingly coarse average.
+        const MAX_POLYGON_AREA_M2 = 5000000; // 5 km²
+
         map.on(L.Draw.Event.CREATED, function(e) {
-            drawnItems.clearLayers();
-            drawnItems.addLayer(e.layer);
+            const latlngs = e.layer.getLatLngs ? e.layer.getLatLngs()[0] : null;
+            if (latlngs && window.L.GeometryUtil && window.L.GeometryUtil.geodesicArea) {
+                const areaM2 = L.GeometryUtil.geodesicArea(latlngs);
+                if (areaM2 > MAX_POLYGON_AREA_M2) {
+                    alert('That area is too large (' + (areaM2 / 1000000).toFixed(1) + ' km²). Please draw a smaller field — max is 5 km².');
+                    return;
+                }
+            }
+
             const bounds = e.layer.getBounds();
             const center = bounds.getCenter();
-            currentLat = r2(center.lat).toFixed(2);
-            currentLng = r2(center.lng).toFixed(2);
-            const samplePoints = [{ lat: currentLat, lng: currentLng }];
-            document.getElementById('coords-text').innerText = 'Polygon center: ' + currentLat + ', ' + currentLng;
+            const lat = r2(center.lat).toFixed(2);
+            const lng = r2(center.lng).toFixed(2);
+
+            if (compareMode) {
+                drawnItems.addLayer(e.layer);
+                const label = prompt('Name this field:', 'Field ' + (compareList.length + 1));
+                if (label) addToCompareList(label, parseFloat(lng), parseFloat(lat));
+                return;
+            }
+
+            drawnItems.clearLayers();
+            drawnItems.addLayer(e.layer);
+            currentLat = lat;
+            currentLng = lng;
+            const samplePoints = [{ lat: lat, lng: lng }];
+            document.getElementById('coords-text').innerText = 'Polygon center: ' + lat + ', ' + lng;
             loadPolygonChart(samplePoints, center);
         });
 
         map.on('click', function(e) {
-            currentLat = r2(e.latlng.lat).toFixed(2);
-            currentLng = r2(e.latlng.lng).toFixed(2);
-            loadChart(currentLng, currentLat);
+            const lat = r2(e.latlng.lat).toFixed(2);
+            const lng = r2(e.latlng.lng).toFixed(2);
+
+            if (compareMode) {
+                const label = prompt('Name this field:', 'Field ' + (compareList.length + 1));
+                if (label) addToCompareList(label, parseFloat(lng), parseFloat(lat));
+                return;
+            }
+
+            currentLat = lat;
+            currentLng = lng;
+            loadChart(lng, lat);
         });
 
-        async function refreshHeatmap() {
+        // Heatmap: two explicit modes.
+        // "Intensity" = total ET summed over the date range (raw water use magnitude).
+        // "Anomaly"   = worst z-score seen at that location (how unusual its most
+        //               extreme month was) — this is the one that actually answers
+        //               "does the heatmap show anomalies?"
+        let heatmapVisible = false;
+        let heatmapMode = 'intensity'; // 'intensity' | 'anomaly'
+
+        function toggleHeatmap() {
+            const btn = document.getElementById('heatmap-btn');
+            const modeBtn = document.getElementById('heatmap-mode-btn');
+            heatmapVisible = !heatmapVisible;
+            if (heatmapVisible) {
+                btn.innerText = 'Heatmap On';
+                modeBtn.style.display = 'inline-block';
+                loadHeatmapData();
+            } else {
+                btn.innerText = 'Heatmap Off';
+                modeBtn.style.display = 'none';
+                if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+                document.getElementById('heatmap-status').innerText = '';
+            }
+        }
+
+        function toggleHeatmapMode() {
+            heatmapMode = heatmapMode === 'intensity' ? 'anomaly' : 'intensity';
+            const modeBtn = document.getElementById('heatmap-mode-btn');
+            const title = document.getElementById('heatmap-legend-title');
+            const labels = document.getElementById('heatmap-legend-labels');
+            if (heatmapMode === 'anomaly') {
+                modeBtn.innerText = 'Mode: Anomaly';
+                title.innerText = 'Anomaly Severity';
+                labels.innerHTML = '<span>Normal</span><span>Extreme</span>';
+            } else {
+                modeBtn.innerText = 'Mode: Intensity';
+                title.innerText = 'ET Intensity';
+                labels.innerHTML = '<span>Low</span><span>High</span>';
+            }
+            if (heatmapVisible) loadHeatmapData();
+        }
+
+        async function loadHeatmapData() {
             document.getElementById('heatmap-status').innerText = 'Loading heatmap from cache...';
             const start = document.getElementById('start').value;
             const end = document.getElementById('end').value;
@@ -317,7 +623,6 @@ def chart():
                     return;
                 }
 
-                // Fetch ET totals for each cached location
                 const results = [];
                 let loaded = 0;
                 for (const loc of locations) {
@@ -326,8 +631,15 @@ def chart():
                         if (r.ok) {
                             const data = await r.json();
                             if (Array.isArray(data)) {
-                                const totalET = data.reduce(function(sum, d) { return sum + d.et; }, 0);
-                                results.push([loc.latitude, loc.longitude, totalET]);
+                                let value;
+                                if (heatmapMode === 'anomaly') {
+                                    // worst-case |z-score| at this location — this is
+                                    // what actually represents "how anomalous"
+                                    value = data.reduce(function(max, d) { return Math.max(max, Math.abs(d.z_score || 0)); }, 0);
+                                } else {
+                                    value = data.reduce(function(sum, d) { return sum + d.et; }, 0);
+                                }
+                                results.push([loc.latitude, loc.longitude, value]);
                                 loaded++;
                                 document.getElementById('heatmap-status').innerText = 'Loading heatmap... ' + loaded + ' / ' + locations.length;
                             }
@@ -341,51 +653,11 @@ def chart():
                         radius: 80, blur: 60, maxZoom: 12,
                         gradient: { 0.0: '#000080', 0.2: '#0000ff', 0.4: '#00ffff', 0.6: '#00ff00', 0.8: '#ffff00', 1.0: '#ff0000' }
                     }).addTo(map);
-                    document.getElementById('heatmap-status').innerText = 'Heatmap loaded from ' + results.length + ' cached locations — no quota used!';
+                    const modeLabel = heatmapMode === 'anomaly' ? 'anomaly severity' : 'ET intensity';
+                    document.getElementById('heatmap-status').innerText = 'Heatmap (' + modeLabel + ') loaded from ' + results.length + ' cached locations — no quota used!';
                 }
             } catch(e) {
                 document.getElementById('heatmap-status').innerText = 'Error loading heatmap.';
-            }
-        }
-
-        async function loadHeatmap(bounds) {
-            document.getElementById('heatmap-status').innerText = 'Loading heatmap...';
-            const start = document.getElementById('start').value;
-            const end = document.getElementById('end').value;
-            const north = bounds.getNorth(), south = bounds.getSouth();
-            const east = bounds.getEast(), west = bounds.getWest();
-            const gridSize = 3;
-            const latStep = (north - south) / gridSize;
-            const lngStep = (east - west) / gridSize;
-            const points = [];
-            for (let i = 0; i <= gridSize; i++)
-                for (let j = 0; j <= gridSize; j++)
-                    points.push({ lat: r2(south + i * latStep), lng: r2(west + j * lngStep) });
-
-            const results = [];
-            for (const p of points) {
-                try {
-                    const res = await fetch('/api/et/point?longitude=' + p.lng.toFixed(2) + '&latitude=' + p.lat.toFixed(2) + '&start_date=' + start + '&end_date=' + end);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (Array.isArray(data)) {
-                            const totalET = data.reduce(function(sum, d) { return sum + d.et; }, 0);
-                            results.push([p.lat, p.lng, totalET]);
-                            document.getElementById('heatmap-status').innerText = 'Loading... ' + results.length + ' / ' + points.length + ' points';
-                        }
-                    }
-                } catch(e) {}
-                await new Promise(r => setTimeout(r, 400));
-            }
-            if (heatLayer) map.removeLayer(heatLayer);
-            if (results.length > 0) {
-                heatLayer = L.heatLayer(results, {
-                    radius: 80, blur: 60, maxZoom: 12,
-                    gradient: { 0.0: '#000080', 0.2: '#0000ff', 0.4: '#00ffff', 0.6: '#00ff00', 0.8: '#ffff00', 1.0: '#ff0000' }
-                }).addTo(map);
-                document.getElementById('heatmap-status').innerText = 'Heatmap loaded — ' + results.length + ' points';
-            } else {
-                document.getElementById('heatmap-status').innerText = 'No data available — quota may be exhausted.';
             }
         }
 

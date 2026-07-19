@@ -1,14 +1,13 @@
 import csv
 import io
-import os
 
-import requests
-from fastapi import APIRouter, HTTPException
+from database import SessionLocal
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-router = APIRouter()
+from routes.et_data import detect_anomalies, fetch_et_series
 
-OPENET_BASE_URL = "https://openet-api.org"
+router = APIRouter()
 
 
 # report generation endpoints
@@ -20,32 +19,16 @@ def generate_csv(
     end_date: str,
     location_name: str = "Unknown Location",
 ):
-    headers = {
-        "Authorization": os.getenv("OPENET_API_KEY"),
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "date_range": [start_date, end_date],
-        "interval": "monthly",
-        "geometry": [longitude, latitude],
-        "model": "Ensemble",
-        "variable": "ET",
-        "reference_et": "gridMET",
-        "units": "in",
-        "file_format": "JSON",
-    }
-    response = requests.post(
-        f"{OPENET_BASE_URL}/raster/timeseries/point", json=payload, headers=headers
-    )
-    if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+    db = SessionLocal()
+    try:
+        raw_data = fetch_et_series(longitude, latitude, start_date, end_date, db)
+    finally:
+        db.close()
 
-    data = response.json()
+    data = detect_anomalies(raw_data)
 
-    # Calculate mean and std for anomaly detection
     values = [d["et"] for d in data]
     mean = sum(values) / len(values)
-    std = (sum((v - mean) ** 2 for v in values) / len(values)) ** 0.5
 
     # Build CSV
     output = io.StringIO()
@@ -60,24 +43,28 @@ def generate_csv(
     writer.writerow(["Units", "inches"])
     writer.writerow([])
 
-    # Data columns
+    # Data columns — reuse the same monthly-seasonal anomaly detection
+    # (z-score vs. same calendar month across years) used everywhere else
+    # in the app, so the CSV matches what's shown on screen.
     writer.writerow(
-        ["Month", "ET (inches)", "Mean ET", "Z-Score", "Anomaly", "Anomaly Type"]
+        [
+            "Month",
+            "ET (inches)",
+            "Monthly Mean ET",
+            "Z-Score",
+            "Anomaly",
+            "Anomaly Type",
+        ]
     )
     for d in data:
-        z_score = (d["et"] - mean) / std if std > 0 else 0
-        anomaly = abs(z_score) > 1.5
-        anomaly_type = (
-            "High" if z_score > 1.5 else "Low" if z_score < -1.5 else "Normal"
-        )
         writer.writerow(
             [
                 d["time"][:7],
                 round(d["et"], 3),
-                round(mean, 3),
-                round(z_score, 3),
-                "Yes" if anomaly else "No",
-                anomaly_type,
+                d["mean"],
+                d["z_score"],
+                "Yes" if d["anomaly"] else "No",
+                d["anomaly_type"].capitalize(),
             ]
         )
 
