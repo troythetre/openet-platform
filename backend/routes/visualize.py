@@ -112,7 +112,7 @@ def chart():
         .btn-download:hover { background: #166534; }
         .heatmap-status { font-size: 10px; color: rgba(255,255,255,0.35); text-align: center; padding: 4px 0; }
         .map-overlay { position: absolute; bottom: 30px; left: 10px; z-index: 1000; background: rgba(0,0,0,0.75); padding: 10px 14px; border-radius: 10px; font-size: 11px; color: white; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.1); }
-        .color-bar { width: 140px; height: 8px; border-radius: 4px; background: linear-gradient(to right, #000080, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000); margin: 6px 0 4px; }
+        .color-bar { width: 140px; height: 8px; border-radius: 4px; background: linear-gradient(to right, #0a1a4d, #1e3a8a, #1d6fb8, #22b8cf, #4ade80, #a3e635, #facc15, #fb923c, #ef4444); margin: 6px 0 4px; }
         .color-labels { display: flex; justify-content: space-between; font-size: 10px; opacity: 0.7; }
         .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 8px; opacity: 0.4; }
         .empty-state .icon { font-size: 32px; }
@@ -279,6 +279,9 @@ def chart():
                         <button class="suggested-q" onclick="answerPreset('summarize')" style="padding:6px 12px; background:rgba(144,202,249,0.1); color:#90caf9; border:1px solid rgba(144,202,249,0.3); border-radius:12px; font-size:11px; cursor:pointer;">Summarize this field</button>
                         <button class="suggested-q" onclick="answerPreset('anomalies')" style="padding:6px 12px; background:rgba(144,202,249,0.1); color:#90caf9; border:1px solid rgba(144,202,249,0.3); border-radius:12px; font-size:11px; cursor:pointer;">Explain anomalies</button>
                         <button class="suggested-q" onclick="answerPreset('compare')" style="padding:6px 12px; background:rgba(144,202,249,0.1); color:#90caf9; border:1px solid rgba(144,202,249,0.3); border-radius:12px; font-size:11px; cursor:pointer;">Compare years</button>
+                        <button class="suggested-q" onclick="answerPreset('trend')" style="padding:6px 12px; background:rgba(144,202,249,0.1); color:#90caf9; border:1px solid rgba(144,202,249,0.3); border-radius:12px; font-size:11px; cursor:pointer;">Trend over time</button>
+                        <button class="suggested-q" onclick="answerPreset('crop')" style="padding:6px 12px; background:rgba(144,202,249,0.1); color:#90caf9; border:1px solid rgba(144,202,249,0.3); border-radius:12px; font-size:11px; cursor:pointer;">What crop might this be?</button>
+                        <button class="suggested-q" onclick="answerPreset('nearby')" style="padding:6px 12px; background:rgba(144,202,249,0.1); color:#90caf9; border:1px solid rgba(144,202,249,0.3); border-radius:12px; font-size:11px; cursor:pointer;">Compare to nearby fields</button>
                     </div>
                     <div style="font-size:10px; color:rgba(255,255,255,0.3); margin-top:8px;">Click a question above — answers are generated instantly from the loaded field data, no AI service required.</div>
                 </div>
@@ -386,7 +389,7 @@ def chart():
 
         const ndviLayer = L.tileLayer(
             'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_L3_NDVI_Monthly/default/2023-07-01/GoogleMapsCompatible_Level7/{z}/{y}/{x}.jpg',
-            { attribution: 'NASA GIBS — MODIS NDVI July 2023', opacity: 1.0, maxZoom: 7 }
+            { attribution: 'NASA GIBS — MODIS NDVI July 2023', opacity: 1.0, maxNativeZoom: 7, maxZoom: 19 }
         );
 
         function toggleNDVI() {
@@ -400,7 +403,6 @@ def chart():
                 ndviLayer.addTo(map); ndviVisible = true;
                 btn.classList.add('active', 'mode-ndvi');
                 legend.style.display = 'block';
-                if (map.getZoom() > 7) map.setZoom(7);
             }
         }
 
@@ -803,8 +805,12 @@ def chart():
                 if (heatLayer) map.removeLayer(heatLayer);
                 if (results.length > 0) {
                     heatLayer = L.heatLayer(results, {
-                        radius: 80, blur: 60, maxZoom: 12,
-                        gradient: { 0.0: '#000080', 0.2: '#0000ff', 0.4: '#00ffff', 0.6: '#00ff00', 0.8: '#ffff00', 1.0: '#ff0000' }
+                        radius: 55, blur: 45, maxZoom: 12, minOpacity: 0.35,
+                        gradient: {
+                            0.0: '#0a1a4d', 0.15: '#1e3a8a', 0.3: '#1d6fb8',
+                            0.45: '#22b8cf', 0.6: '#4ade80', 0.72: '#a3e635',
+                            0.82: '#facc15', 0.9: '#fb923c', 1.0: '#ef4444'
+                        }
                     }).addTo(map);
                     const modeLabel = heatmapMode === 'anomaly' ? 'anomaly severity' : 'ET intensity';
                     document.getElementById('heatmap-status').innerText = 'Heatmap (' + modeLabel + ') loaded from ' + results.length + ' cached locations — no quota used!';
@@ -1207,7 +1213,10 @@ def chart():
             const questionLabels = {
                 summarize: 'Summarize this field',
                 anomalies: 'Explain anomalies',
-                compare: 'Compare years'
+                compare: 'Compare years',
+                trend: 'Is this getting worse over time?',
+                crop: 'What crop might this be?',
+                nearby: 'How does this compare to nearby fields?'
             };
             addChatBubble(questionLabels[type], true);
 
@@ -1269,6 +1278,158 @@ def chart():
                     (last >= first ? '+' : '') + pctChange + '% change in total annual ET.',
                     false
                 );
+            }
+
+            if (type === 'trend') {
+                // Simple linear regression (least squares) over the monthly
+                // series, indexed sequentially — slope tells us the overall
+                // direction, independent of normal seasonal up-and-down swings.
+                const n = data.length;
+                const xs = data.map(function(_, i) { return i; });
+                const ys = data.map(function(d) { return d.et; });
+                const xMean = xs.reduce(function(a, b) { return a + b; }, 0) / n;
+                const yMean = ys.reduce(function(a, b) { return a + b; }, 0) / n;
+                let num = 0, den = 0;
+                for (let i = 0; i < n; i++) {
+                    num += (xs[i] - xMean) * (ys[i] - yMean);
+                    den += (xs[i] - xMean) * (xs[i] - xMean);
+                }
+                const slope = den !== 0 ? num / den : 0;
+                const totalChange = slope * (n - 1);
+                const pctOfMean = yMean > 0 ? (totalChange / yMean * 100) : 0;
+
+                // Identify the peak season months from the data itself
+                const monthlyAvg = {};
+                data.forEach(function(d) {
+                    const m = d.time.slice(5, 7);
+                    if (!monthlyAvg[m]) monthlyAvg[m] = [];
+                    monthlyAvg[m].push(d.et);
+                });
+                const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                const monthRanking = Object.keys(monthlyAvg).map(function(m) {
+                    const vals = monthlyAvg[m];
+                    return { month: monthNames[parseInt(m, 10) - 1], avg: vals.reduce(function(a,b){return a+b;},0) / vals.length };
+                }).sort(function(a, b) { return b.avg - a.avg; });
+                const peakMonths = monthRanking.slice(0, 2).map(function(m) { return m.month; }).join(' and ');
+
+                let trendMsg;
+                if (Math.abs(pctOfMean) < 5) {
+                    trendMsg = 'Water use looks <b>fairly stable</b> across this period — no strong upward or downward drift beyond normal seasonal variation.';
+                } else if (totalChange > 0) {
+                    trendMsg = 'Water use shows a <b>gradual upward trend</b> over this period (roughly ' + Math.abs(pctOfMean).toFixed(0) + '% higher by the end than the start), beyond what normal seasonality alone would explain.';
+                } else {
+                    trendMsg = 'Water use shows a <b>gradual downward trend</b> over this period (roughly ' + Math.abs(pctOfMean).toFixed(0) + '% lower by the end than the start), beyond what normal seasonality alone would explain.';
+                }
+                addChatBubble(
+                    trendMsg + '<br><br>Peak growing-season water use consistently falls in <b>' + peakMonths + '</b>, which lines up with typical mid-summer crop demand in this region.',
+                    false
+                );
+            }
+
+            if (type === 'crop') {
+                const total = data.reduce(function(sum, d) { return sum + d.et; }, 0);
+                const years = {};
+                data.forEach(function(d) { const y = d.time.slice(0, 4); years[y] = (years[y] || 0) + d.et; });
+                const yearCount = Object.keys(years).length;
+                const annualAvg = total / Math.max(yearCount, 1);
+
+                // Ballpark seasonal ET reference ranges for common crops in
+                // this region (general agronomic reference values, not a
+                // live per-pixel crop lookup — toggle the Crop Type layer
+                // on the map to see USDA's actual classification here).
+                const profiles = [
+                    { name: 'grapes / vineyard', low: 12, high: 18 },
+                    { name: 'hay / pasture',      low: 22, high: 30 },
+                    { name: 'orchard / fruit',     low: 20, high: 28 },
+                    { name: 'corn',                low: 20, high: 25 },
+                    { name: 'soybeans',            low: 18, high: 22 }
+                ];
+                const matches = profiles.filter(function(p) { return annualAvg >= p.low - 2 && annualAvg <= p.high + 2; });
+                const matchNames = matches.length > 0 ? matches.map(function(p) { return p.name; }).join(', ') : null;
+
+                addChatBubble(
+                    'This field averages about <b>' + annualAvg.toFixed(1) + ' inches/year</b> of water use. ' +
+                    (matchNames
+                        ? 'That\\'s in the typical seasonal range for <b>' + matchNames + '</b> in this region.'
+                        : 'That doesn\\'t closely match typical reference ranges for common regional crops — could be a mixed-use field, an off-season reading, or a crop outside the common set checked here.') +
+                    '<br><br>These are general agronomic reference ranges, not an exact identification — toggle the <b>Crop Type</b> layer on the map to see USDA\\'s actual classification for this location.',
+                    false
+                );
+            }
+
+            if (type === 'nearby') {
+                answerNearbyComparison(data);
+            }
+        }
+
+        async function answerNearbyComparison(data) {
+            if (!currentLat || !currentLng) {
+                addChatBubble('Could not determine this field\\'s exact location — try reloading it and asking again.', false);
+                return;
+            }
+            const start = document.getElementById('start').value;
+            const end = document.getElementById('end').value;
+            const thisLat = parseFloat(currentLat);
+            const thisLng = parseFloat(currentLng);
+            const radiusDeg = 0.15; // roughly ~15km — "nearby" for a regional comparison
+
+            addChatBubble('Checking nearby cached fields...', false);
+
+            try {
+                const res = await fetch('/api/et/cached?start_date=' + start + '&end_date=' + end);
+                const locations = await res.json();
+                const nearby = locations.filter(function(loc) {
+                    return Math.abs(loc.latitude - thisLat) < radiusDeg &&
+                           Math.abs(loc.longitude - thisLng) < radiusDeg &&
+                           !(loc.latitude.toFixed(2) === thisLat.toFixed(2) && loc.longitude.toFixed(2) === thisLng.toFixed(2));
+                }).slice(0, 6); // cap so we don't fire off too many requests
+
+                // Remove the "Checking..." placeholder bubble before showing the real answer
+                const messages = document.getElementById('chat-messages');
+                if (messages.lastChild) messages.removeChild(messages.lastChild);
+
+                if (nearby.length === 0) {
+                    addChatBubble('No other cached fields within about 15km of this one yet — click a few more nearby dots on the map, then ask again.', false);
+                    return;
+                }
+
+                const thisTotal = data.reduce(function(sum, d) { return sum + d.et; }, 0);
+                const totals = [];
+                for (const loc of nearby) {
+                    try {
+                        const r = await fetch('/api/et/point?longitude=' + loc.longitude + '&latitude=' + loc.latitude + '&start_date=' + start + '&end_date=' + end);
+                        if (r.ok) {
+                            const d = await r.json();
+                            if (Array.isArray(d) && d.length > 0) {
+                                totals.push(d.reduce(function(sum, x) { return sum + x.et; }, 0));
+                            }
+                        }
+                    } catch (e) {}
+                }
+
+                if (totals.length === 0) {
+                    addChatBubble('Found nearby fields but couldn\\'t load their data — try again in a moment.', false);
+                    return;
+                }
+
+                const avgNearby = totals.reduce(function(a, b) { return a + b; }, 0) / totals.length;
+                const pctDiff = avgNearby > 0 ? ((thisTotal - avgNearby) / avgNearby * 100) : 0;
+                let comparison;
+                if (Math.abs(pctDiff) < 8) {
+                    comparison = 'in line with';
+                } else if (pctDiff > 0) {
+                    comparison = 'about ' + pctDiff.toFixed(0) + '% higher than';
+                } else {
+                    comparison = 'about ' + Math.abs(pctDiff).toFixed(0) + '% lower than';
+                }
+
+                addChatBubble(
+                    'This field totals <b>' + thisTotal.toFixed(1) + ' inches</b>, compared to an average of <b>' + avgNearby.toFixed(1) + ' inches</b> across ' + totals.length + ' nearby field' + (totals.length > 1 ? 's' : '') + ' (within ~15km). ' +
+                    'That\\'s ' + comparison + ' its neighbors.',
+                    false
+                );
+            } catch (e) {
+                addChatBubble('Something went wrong checking nearby fields — try again.', false);
             }
         }
     </script>
