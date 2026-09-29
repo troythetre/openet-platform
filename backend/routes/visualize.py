@@ -364,8 +364,12 @@ def chart():
         const satellite = L.tileLayer('https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' + (ESRI_API_KEY ? '?token=' + ESRI_API_KEY : ''), {
             attribution: 'Tiles © Esri', maxZoom: 19
         });
-        const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
-            attribution: '© OpenStreetMap © CARTO', maxZoom: 19
+        // CARTO's free label tiles now also require their own API key (same
+        // industry-wide shift as Esri's). Rather than adding a second key,
+        // this uses Esri's own reference/labels layer with the key we
+        // already have.
+        const labels = L.tileLayer('https://ibasemaps-api.arcgis.com/arcgis/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}' + (ESRI_API_KEY ? '?token=' + ESRI_API_KEY : ''), {
+            attribution: 'Tiles © Esri', maxZoom: 19
         });
         satellite.addTo(map);
         labels.addTo(map);
