@@ -360,7 +360,8 @@ def chart():
 
         const map = L.map('map').setView([42.66, -77.05], 10);
 
-        const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        const ESRI_API_KEY = '__ESRI_API_KEY__';
+        const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' + (ESRI_API_KEY ? '?token=' + ESRI_API_KEY : ''), {
             attribution: 'Tiles © Esri', maxZoom: 19
         });
         const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
@@ -1437,4 +1438,5 @@ def chart():
 </html>
 """
     html = html.replace("__GOOGLE_CLIENT_ID__", os.getenv("GOOGLE_CLIENT_ID", ""))
+    html = html.replace("__ESRI_API_KEY__", os.getenv("ESRI_API_KEY", ""))
     return html
