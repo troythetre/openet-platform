@@ -361,7 +361,7 @@ def chart():
         const map = L.map('map').setView([42.66, -77.05], 10);
 
         const ESRI_API_KEY = '__ESRI_API_KEY__';
-        const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' + (ESRI_API_KEY ? '?token=' + ESRI_API_KEY : ''), {
+        const satellite = L.tileLayer('https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' + (ESRI_API_KEY ? '?token=' + ESRI_API_KEY : ''), {
             attribution: 'Tiles © Esri', maxZoom: 19
         });
         const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
